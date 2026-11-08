@@ -1,7 +1,14 @@
-import { useMemo, useState } from 'react'
-import { sampleLeads } from './data/sampleLeads.js'
+import { useEffect, useMemo, useState } from 'react'
 import { STAGES, STAGE_INFO, buildLeadList, isFound } from './lib/scoring.js'
+import { loadLeads } from './lib/loadLeads.js'
 import './App.css'
+
+const ORIGIN_NOTE = {
+  loading: 'Loading leads…',
+  sample: 'Demo with made-up sample data. These properties, operators and sources are not real.',
+  database: 'Live from the team database. Rows marked as samples are made up.',
+  offline: 'Could not reach the database, so this shows made-up sample data instead. Try again in a minute.',
+}
 
 const money = (value) => (isFound(value) ? `$${Math.round(value / 1000)}k` : 'NOT FOUND')
 
@@ -99,7 +106,11 @@ function LeadCard({ lead, rank }) {
 }
 
 export default function App() {
-  const { leads, dropped } = useMemo(() => buildLeadList(sampleLeads), [])
+  const [raw, setRaw] = useState({ leads: [], origin: 'loading' })
+  useEffect(() => {
+    loadLeads().then(setRaw)
+  }, [])
+  const { leads, dropped } = useMemo(() => buildLeadList(raw.leads), [raw])
   const [stage, setStage] = useState('All')
   const [state, setState] = useState('All')
   const [buyerOnly, setBuyerOnly] = useState(false)
@@ -128,13 +139,13 @@ export default function App() {
           A ranked list of senior housing properties heading into distress, and the operators likely to buy them,
           so the originations team can offer a bridge loan first.
         </p>
-        <p className="sample-note">Demo with made-up sample data. These properties, operators and sources are not real.</p>
+        <p className="sample-note">{ORIGIN_NOTE[raw.origin]}</p>
       </header>
 
       <section className="stats" aria-label="Summary">
         <div className="stat"><span className="stat-num">{leads.length}</span><span>Leads</span></div>
         <div className="stat"><span className="stat-num">{lateOrSale}</span><span>Late stage or sale</span></div>
-        <div className="stat"><span className="stat-num">{Math.round((withBuyer / leads.length) * 100)}%</span><span>Buyer identified</span></div>
+        <div className="stat"><span className="stat-num">{leads.length ? Math.round((withBuyer / leads.length) * 100) : 0}%</span><span>Buyer identified</span></div>
         <div className="stat"><span className="stat-num">{review}</span><span>Need review</span></div>
       </section>
 
@@ -173,7 +184,7 @@ export default function App() {
       </section>
 
       <section className="leads" aria-label="Leads">
-        {visible.length === 0 && <p className="empty">No leads match these filters.</p>}
+        {raw.origin !== 'loading' && visible.length === 0 && <p className="empty">No leads match these filters.</p>}
         {visible.map((lead) => (
           <LeadCard key={lead.id} lead={lead} rank={leads.indexOf(lead) + 1} />
         ))}
