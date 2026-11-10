@@ -243,12 +243,18 @@ def _licensed(url) -> bool:
 
 
 def attach_public(ranked: list[Lead], facs: dict, sigs_by_fac: dict, hints_by_fac: dict, buyers: dict, resolver,
-                  today: date) -> int:
+                  today: date, pub_facs: dict | None = None) -> int:
     """Deliverable rule (Nov 10, 2026): the Bloomfield-facing list shows what the PUBLIC sources alone give. For every
     lead with licensed content, the whole list is scored again without licensed signals / buyers (same family caps and
     top-N rules), and the public score, tier, buyer and distress types are stored in score_breakdown['public'].
     A lead whose public twin is missing or not on the main list is 'licensed_only'."""
+    for l in ranked:                      # a licensed size alone is licensed content too
+        if facs[l.facility_id].get("size_licensed"):
+            l.breakdown["size_licensed"] = True
+            if "licensed_private" not in l.flags:
+                l.flags.append("licensed_private")
     affected = {l.facility_id for l in ranked if "licensed_private" in l.flags}
+    facs = pub_facs or facs               # the public twin never sees licensed sizes
     if not affected:
         return 0
     pub_sigs = {fid: [s for s in sigs if not _licensed(s.source_url)] for fid, sigs in sigs_by_fac.items()}
@@ -323,6 +329,7 @@ def lead_row(l: Lead, fac: dict, urls: list[str]) -> dict:
     found = b.status != "NOT FOUND"
     return {"lead_id": None, "property": fac["canonical_name"], "city": fac["city"], "state": fac["state"],
             "care_types": fac.get("care_types") or [], "units": fac["units"], "beds": fac["beds"],
+            "size_licensed": bool(fac.get("size_licensed")),
             "distress_type": l.distress_type, "stage": l.stage, "buyer": b.name if found else "NOT FOUND",
             "buyer_status": b.status, "score": l.score, "score_breakdown": lead_breakdown(l), "flags": l.flags,
             "source_urls": sorted(set(urls)), "facility_id": l.facility_id, "ccn": fac.get("ccn"),
