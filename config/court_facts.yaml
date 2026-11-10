@@ -1,6 +1,16 @@
 # Hand-checked court facts (Gate 3 top-5 check, Nov 10, 2026). Read by src/score/signals.py.
 # Every entry needs a public source_url. Public court / CMS facts only; nothing confidential goes here.
 #
+# cases: public bankruptcy filings our court sources missed (loaded by `python -m src.discover.courts --source court_manual`).
+#   court (CourtListener court id), docket_no, debtor_name, chapter, filed_date, source_url (a public docket listing)
+cases:
+  - court: "nhb"
+    docket_no: "1:26-bk-10275"
+    debtor_name: "Granite Senior Services, LLC"
+    chapter: 11
+    filed_date: 2026-03-30
+    source_url: https://www.inforuptcy.com/browse-filings/new-hampshire-bankruptcy-court/1:26-bk-10275/bankruptcy-case-granite-senior-services-llc
+
 # links: extra bankruptcy case -> facility links, confirmed by an address or CCN source.
 #   case:          court:docket as in core.legal_case (e.g. pawb:26-22481)
 #   ccn:           the facility's CMS CCN
@@ -59,6 +69,17 @@ facilities:
     care_types: [IL, AL, MC]
     source_id: courtlistener
     source_url: https://bondoro.com/alura-senior-living-filing-alert/
+  # Granite Senior Services, LLC (D.N.H. 1:26-bk-10275, Ch. 11 filed Mar 30, 2026) does business as Artemis Living at
+  # Littleton (Bondoro filing alert). Units: 22 IL cottages + 6 IL apartments + 47 supported-living apartments +
+  # 20 memory-care suites = 95 (Littleton Area Chamber of Commerce profile).
+  - case: "nhb:26-10275"
+    name: "Artemis Living at Littleton"
+    city: "Littleton"
+    state: "NH"
+    units: 95
+    care_types: [IL, AL, MC]
+    source_id: court_manual
+    source_url: https://bondoro.com/artemis-living-filing-alert/
 
 # excluded_sale_evidence: machine-found sale evidence that belongs to a different case.
 excluded_sale_evidence:

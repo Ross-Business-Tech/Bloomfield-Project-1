@@ -22,7 +22,7 @@ from .rules import CATEGORY, METRIC_SIGNALS, Sig, stage_of
 
 NEWS_SOURCES = ("shb_rss", "shn_rss", "snn_rss", "gnews_rss", "mcknights_ltc_rss", "mcknights_sl_rss", "gdelt_doc",
                 "bondoro_rss", "whatnow_rss")
-COURT_SOURCES = ("courtlistener", "elevenflo", "epiq", "stretto", "kroll")
+COURT_SOURCES = ("courtlistener", "elevenflo", "epiq", "stretto", "kroll", "court_manual")
 
 
 @dataclass

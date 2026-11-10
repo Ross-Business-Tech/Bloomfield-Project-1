@@ -69,7 +69,7 @@ def court_facts() -> dict:
     if not _COURT_FACTS.exists():
         return {}
     data = yaml.safe_load(_COURT_FACTS.read_text()) or {}
-    for section in ("links", "sales", "buyers", "facilities", "excluded_sale_evidence"):
+    for section in ("cases", "links", "sales", "buyers", "facilities", "excluded_sale_evidence"):
         for item in data.get(section) or []:
             if not str(item.get("source_url", "")).startswith(("http://", "https://")):
                 raise ValueError(f"config/court_facts.yaml {section}: every entry needs a source_url ({item})")
