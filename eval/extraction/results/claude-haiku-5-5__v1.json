@@ -1,0 +1,722 @@
+{
+ "model": "claude-haiku-5-5",
+ "prompt_version": "v1",
+ "fully_correct": 11,
+ "total": 20,
+ "field_misses": {
+  "debtor_or_owner": 4,
+  "buyer_or_new_operator": 3,
+  "stage_text": 3,
+  "event_dates": 4,
+  "property_name": 1,
+  "lender": 1
+ },
+ "api_usd_this_run": 0.007,
+ "cases": [
+  {
+   "doc_id": 28,
+   "fully_correct": false,
+   "misses": [
+    "debtor_or_owner",
+    "buyer_or_new_operator"
+   ],
+   "predicted": {
+    "property_name": "Brookside Inn",
+    "street": "NOT FOUND",
+    "city": "Castle Rock",
+    "state": "Colo.",
+    "units": "NOT FOUND",
+    "beds": "126",
+    "stage_text": "SLIB has arranged the sale of Brookside Inn, a skilled nursing facility located in Castle Rock",
+    "debtor_or_owner": "A Colorado-based entity",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "A California-based skilled nursing operator",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "sale"
+    ],
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 4343,
+   "fully_correct": false,
+   "misses": [
+    "stage_text",
+    "debtor_or_owner"
+   ],
+   "predicted": {
+    "property_name": "Sarah Neuman Skilled Nursing Facility",
+    "street": "NOT FOUND",
+    "city": "Mamaroneck",
+    "state": "N.Y.",
+    "units": "NOT FOUND",
+    "beds": "250",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "a religious nonprofit organization",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "sale"
+    ],
+    "event_dates": "NOT FOUND",
+    "amounts": [
+     {
+      "amount_text": "$76 million",
+      "what": "final sale price"
+     },
+     {
+      "amount_text": "$84 million",
+      "what": "initial contract price (first buyer withdrew)"
+     },
+     {
+      "amount_text": "$72 million",
+      "what": "offer from second seller"
+     },
+     {
+      "amount_text": "$5 million",
+      "what": "interim loan arranged by broker"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 47,
+   "fully_correct": false,
+   "misses": [
+    "debtor_or_owner",
+    "buyer_or_new_operator"
+   ],
+   "predicted": {
+    "property_name": "Laurels Senior Living Community",
+    "street": "NOT FOUND",
+    "city": "Hazleton",
+    "state": "Pa.",
+    "units": "92",
+    "beds": "NOT FOUND",
+    "stage_text": "Decker Healthcare Group has arranged the sale of Laurels Senior Living Community",
+    "debtor_or_owner": "family ownership",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "A Pennsylvania operator of assisted living and skilled nursing facilities",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "assisted_living"
+    ],
+    "distress_type": [
+     "sale"
+    ],
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 2354,
+   "fully_correct": false,
+   "misses": [
+    "buyer_or_new_operator",
+    "event_dates"
+   ],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "has filed for Chapter 11 bankruptcy",
+    "debtor_or_owner": "Genesis HealthCare",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "affiliate of ReGen Healthcare",
+    "lender": "Omega Healthcare Investors",
+    "care_type": [
+     "assisted_living"
+    ],
+    "distress_type": [
+     "chapter_11"
+    ],
+    "event_dates": [
+     {
+      "date_text": "Thursday",
+      "event": "Omega business update announcing $8 million DIP financing commitment"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "$8 million",
+      "what": "Omega commitment to fund debtor-in-possession financing"
+     },
+     {
+      "amount_text": "$4.2 million",
+      "what": "rent not paid by Genesis"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": [
+     "buyer_or_new_operator"
+    ]
+   }
+  },
+  {
+   "doc_id": 2566,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "has filed for Chapter 7 bankruptcy",
+    "debtor_or_owner": "Pacifica Senior Living LLC",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "assisted_living",
+     "memory_care"
+    ],
+    "distress_type": [
+     "chapter_7"
+    ],
+    "event_dates": [
+     {
+      "date_text": "March 24",
+      "event": "Chapter 7 bankruptcy filing in California Southern Bankruptcy Court"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "between $10 million and $50 million",
+      "what": "total liabilities"
+     },
+     {
+      "amount_text": "$50,000 or less",
+      "what": "total assets"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 2685,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "is filing for Chapter 11 bankruptcy as it seeks to reorganize its operations and financial holdings",
+    "debtor_or_owner": "Lutheran Life Communities",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "ccrc",
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "chapter_11"
+    ],
+    "event_dates": [
+     {
+      "date_text": "Feb. 3",
+      "event": "board adopted bankruptcy resolution"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "$808,084",
+      "what": "largest current creditor Select Rehabilitation outstanding amount"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3560,
+   "fully_correct": false,
+   "misses": [
+    "event_dates"
+   ],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "LaVie Care Centers has completed its bankruptcy proceedings effective June 1, and the Omega-LaVie master lease has been assigned to a new entity called Avardis.",
+    "debtor_or_owner": "LaVie Care Centers",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "Avardis",
+    "lender": "Omega Healthcare Investors",
+    "care_type": [
+     "assisted_living",
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "chapter_11",
+     "operator_change"
+    ],
+    "event_dates": [
+     {
+      "date_text": "June 1",
+      "event": "Bankruptcy proceedings completed; master lease assigned"
+     },
+     {
+      "date_text": "Last June",
+      "event": "Chapter 11 bankruptcy filing"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "$1.1 billion",
+      "what": "LaVie total debt at bankruptcy filing"
+     },
+     {
+      "amount_text": "$622 million",
+      "what": "LaVie lease obligations at bankruptcy filing"
+     },
+     {
+      "amount_text": "$10 million",
+      "what": "Omega commitment to fund 50% of expected debtor-in-possession financing"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3837,
+   "fully_correct": false,
+   "misses": [
+    "property_name"
+   ],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "Connecticut",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "Athena officials notified the state Department of Social Services (DSS) of the closures with letters of intent filed on Friday.",
+    "debtor_or_owner": "Athena Health Care",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "closure"
+    ],
+    "event_dates": "NOT FOUND",
+    "amounts": [
+     {
+      "amount_text": "more than $750,000",
+      "what": "overdue employee health care payments and back taxes"
+     }
+    ],
+    "other_properties": [
+     {
+      "property_name": "Countryside Manor",
+      "street": "NOT FOUND",
+      "city": "NOT FOUND",
+      "state": "NOT FOUND",
+      "units": "NOT FOUND",
+      "beds": "NOT FOUND"
+     }
+    ],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3218,
+   "fully_correct": false,
+   "misses": [
+    "event_dates"
+   ],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "Eleven nursing homes operated by Massachusetts-based Next Step Healthcare have been placed in court-appointed receivership",
+    "debtor_or_owner": "Next Step Healthcare",
+    "receiver_or_trustee": "Michael Flanagan",
+    "buyer_or_new_operator": "iCare Health Network",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "loan_or_lease_default",
+     "operator_change",
+     "receivership"
+    ],
+    "event_dates": [
+     {
+      "date_text": "April",
+      "event": "next scheduled status conference in receivership case"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "nearly $15 million",
+      "what": "unpaid rent and fees owed to landlord"
+     },
+     {
+      "amount_text": "$3 million",
+      "what": "owed to the lender"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3426,
+   "fully_correct": false,
+   "misses": [
+    "stage_text",
+    "debtor_or_owner",
+    "lender",
+    "event_dates"
+   ],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NHC affiliate is in default under its master lease with National Health Investors",
+    "debtor_or_owner": "an affiliate of National HealthCare Corporation",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "National Health Investors",
+    "care_type": [
+     "assisted_living",
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "loan_or_lease_default"
+    ],
+    "event_dates": [
+     {
+      "date_text": "July 29, 2025",
+      "event": "NHI first notified NHC of non-compliance with lease provisions"
+     },
+     {
+      "date_text": "Aug. 29",
+      "event": "Deadline given to tenant to remedy non-compliance"
+     },
+     {
+      "date_text": "Monday",
+      "event": "NHI notified NHC affiliate it is in default"
+     }
+    ],
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": [
+     "stage_text"
+    ]
+   }
+  },
+  {
+   "doc_id": 4733,
+   "fully_correct": false,
+   "misses": [
+    "stage_text"
+   ],
+   "predicted": {
+    "property_name": "Charles County Nursing and Rehabilitation Center",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "Family of Care Real Estate Holding Co., Inc.; Charles County Nursing and Rehabilitation Center",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "chapter_11"
+    ],
+    "event_dates": [
+     {
+      "date_text": "Oct 18, 2024",
+      "event": "Chapter 11 petition date"
+     }
+    ],
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 4704,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "Richland Healthcare and Rehabilitation Center",
+    "street": "NOT FOUND",
+    "city": "Johnstown",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "Guardian Elder Care at Johnstown's Chapter 11 case was dismissed without prejudice on September 30, 2026.",
+    "debtor_or_owner": "Guardian Elder Care at Johnstown, LLC",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "S&T Bank",
+    "care_type": [
+     "skilled_nursing"
+    ],
+    "distress_type": [
+     "chapter_11"
+    ],
+    "event_dates": [
+     {
+      "date_text": "July 29, 2024",
+      "event": "Chapter 11 petition filed"
+     },
+     {
+      "date_text": "October 29, 2024",
+      "event": "Cuarzo portfolio sale closed"
+     },
+     {
+      "date_text": "September 30, 2026",
+      "event": "Chapter 11 case dismissed without prejudice"
+     }
+    ],
+    "amounts": [
+     {
+      "amount_text": "~$66.2M",
+      "what": "Funded debt at petition"
+     }
+    ],
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 1202,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 1683,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 2759,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3437,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 1626,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 1535,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3268,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  },
+  {
+   "doc_id": 3703,
+   "fully_correct": true,
+   "misses": [],
+   "predicted": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND",
+    "other_properties": [],
+    "unverified_fields": []
+   }
+  }
+ ]
+}

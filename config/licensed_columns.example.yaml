@@ -1,0 +1,27 @@
+# Example only (fake headers). The real map lives in eval/private/licensed_columns.yaml (gitignored): copy this
+# file there and replace each value with the matching column header of your licensed export.
+# Keys are the loader's generic field names; a missing key or header = NOT FOUND.
+hud232:
+  property_name: "Facility"
+  city: "Town"
+  state: "St"
+  units: "Unit Count"
+  deal_name: "Pool"
+  orig_date: "Start Date"
+  maturity_date: "End Date"
+  status_history: "Pay History"
+  months_delinquent_total: "Months Late"
+  source: "Source"
+loans:
+  property_name: "Facility"
+  group: "Portfolio"
+  city: "Town"
+  state: "St"
+  units: "Unit Count"
+  loan_status: "Status"
+  orig_balance: "Original Amount"
+  orig_date: "Start Date"
+  maturity_date: "End Date"
+  transfer_reason: "Transfer Reason"
+  status_history: "Status History"
+  source: "Source"

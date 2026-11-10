@@ -1,0 +1,23 @@
+{
+  "purpose": "Converts the holdout's free-text distress_type labels into the extractor's fixed values (src/extract/schema.py DISTRESS_TYPES). Written by Claude Code on 2026-11-10 from the labels alone, before any model output was seen; review it.",
+  "rule": "Correct when the prediction contains every 'required' value and nothing outside required + allowed. 'any_of' = at least one of these counts as the required value.",
+  "care_type_codes": {"IL": "independent_living", "AL": "assisted_living", "MC": "memory_care", "SNF": "skilled_nursing", "CCRC": "ccrc"},
+  "negatives_rule": "N16-N20: label distress NOT FOUND. Strict view: prediction must be NOT FOUND. Pipeline view: 'sale' / 'operator_change' alone is a market sale (Gate 3 decision #4: not distress), so it also counts as NOT FOUND. Pass/fail uses the pipeline view; both are reported.",
+  "distress": {
+    "H01": {"any_of": ["chapter_11", "chapter_7", "bankruptcy_other"], "allowed": ["sale", "operator_change"], "note": "label 'bankruptcy', chapter not stated (soft chapter_11); sale closed"},
+    "H02": {"required": ["chapter_11"], "allowed": ["sale", "operator_change"], "note": "assets sold out of Ch. 11"},
+    "H03": {"required": ["chapter_11"], "allowed": []},
+    "H04": {"required": ["foreclosure"], "allowed": ["sale", "operator_change"], "note": "sheriff's sale; lender took the property"},
+    "H05": {"required": ["receivership"], "allowed": ["loan_or_lease_default"], "note": "receiver motion after loan default"},
+    "H06": {"required": ["chapter_11"], "allowed": ["sale"], "note": "sale process planned"},
+    "H07": {"required": ["receivership"], "allowed": ["loan_or_lease_default"]},
+    "H08": {"required": ["loan_or_lease_default"], "allowed": ["receivership", "sale"], "note": "receivership suit dropped; broker marketing the property"},
+    "H09": {"required": ["loan_or_lease_default"], "allowed": ["receivership"], "note": "receiver requested, no ruling"},
+    "H10": {"required": ["delayed_opening"], "allowed": [], "note": "SCHEMA GAP: the extractor has no delayed_opening value, so this field cannot be correct until the enum is extended"},
+    "H11": {"required": ["closure"], "allowed": []},
+    "H12": {"required": ["foreclosure"], "allowed": ["sale", "operator_change", "delayed_opening"], "note": "'never opened' = delayed opening (schema gap; allowed, not required)"},
+    "H13": {"required": ["closure"], "allowed": ["loan_or_lease_default"], "note": "property previously defaulted"},
+    "H14": {"required": ["chapter_11"], "allowed": []},
+    "H15": {"required": ["receivership"], "allowed": ["sale", "operator_change"]}
+  }
+}

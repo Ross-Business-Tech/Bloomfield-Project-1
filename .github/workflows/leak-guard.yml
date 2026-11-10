@@ -1,0 +1,16 @@
+name: Leak guard
+# Fails a pull request whose changes add API / database keys, email addresses or *_PRIVATE* files.
+# Generic rules only: the private term list never leaves the team's machines.
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  leak-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the pull request's changes
+        run: python3 tools/leak_guard.py --no-private-terms --range "origin/${{ github.base_ref }}...HEAD"

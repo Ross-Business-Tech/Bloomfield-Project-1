@@ -1,0 +1,761 @@
+{
+  "meta": {
+    "name": "extraction_holdout_v1",
+    "created": "2026-11-10",
+    "labeler": "Claude (claude.ai chat, independent of the extractor; never saw extractor outputs or the dev-set prompt)",
+    "human_verified": true,
+    "purpose": "Blind held-out test for the Wave 2 AI article reader (Requirement #1: >=18/20). The 20 cases in eval/extraction/cases.json become the DEV set.",
+    "composition": "15 distress articles + 5 tricky negatives. No overlap with the dev set. No articles about Bloomfield's past deals or their markets.",
+    "copyright": "Labels are facts + URLs only. No article text is stored here. The test must fetch article text at run time (or read it from raw.document).",
+    "rules": {
+      "literal_only": "A field is filled only if the article text states it. Inferences (state from county, chapter from 'bankruptcy') are listed under accept_soft, never required.",
+      "NOT_FOUND": "Exact string NOT FOUND when the text does not state the field.",
+      "url_leak": "Text that appears only inside a link URL or slug does NOT count as stated.",
+      "negatives": "For N16-N20 only distress_type and expected_stage are scored (must be NOT FOUND). Other fields are informational."
+    },
+    "scoring": {
+      "per_field": "exact match after normalization (case, punctuation, LLC/Inc suffixes, number formatting). accept_soft values count as correct but are reported separately.",
+      "hallucination": "Any field where the label is NOT FOUND but the model filled a value. Report count separately; buyer_or_new_operator hallucinations are the worst error class.",
+      "article_correct": "An article is correct when all scored fields match. Pass bar: >=18/20 articles AND 0 buyer hallucinations.",
+      "report": "Article score, per-field accuracy table, buyer-field accuracy, hallucination count, and the same numbers for Haiku and Sonnet."
+    },
+    "expected_stage_values": "early | middle | late | sale | NOT FOUND (computed in code, not by the model; used to test Requirement #2)",
+    "human_verification_note": "2026-11-10: Aiden spot-checked property + buyer on H01, H02, H04, H09, H12. H15 syndicated link would not open for him; it was verified by Claude's fetch only. Original Business Wire link added as alt_url."
+  },
+  "cases": [
+    {
+      "id": "H01",
+      "url": "https://www.longislandpress.com/2025/05/14/sale-closes-the-harborside",
+      "source": "Long Island Press",
+      "published": "2025-05-14",
+      "is_distress": true,
+      "labels": {
+        "property_name": "The Harborside",
+        "street": "NOT FOUND",
+        "city": "Port Washington",
+        "state": "NOT FOUND",
+        "units": "26 enriched housing (assisted living) units",
+        "beds": "56 skilled nursing beds; 18 memory support beds",
+        "care_type": [
+          "IL",
+          "AL",
+          "MC",
+          "SNF"
+        ],
+        "distress_type": "bankruptcy",
+        "stage_text": "$86M bankruptcy sale approved by Judge Alan S. Trust in February; closed May 12",
+        "debtor_or_owner": "NOT FOUND",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "Focus Healthcare Partners LLC",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "bankruptcy filed 2023 (third filing in nine years)",
+          "sale approved February",
+          "sale closed May 12"
+        ],
+        "amounts": [
+          "$86 million sale price",
+          "$42.5 million entrance-fee reimbursement",
+          "about $120 million owed entrance fees",
+          "$36.5 million from sister-facility sale",
+          "$2 million from Focus Healthcare Partners"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "NY"
+        ],
+        "distress_type": [
+          "chapter_11 (chapter not stated in text)"
+        ],
+        "debtor_or_owner": [
+          "The Harborside"
+        ]
+      },
+      "expected_stage": "sale",
+      "traps": "Chapter is never stated. Sister facility (Amsterdam Nursing Home, Manhattan) is a distractor. Unit counts are partial and describe units being closed."
+    },
+    {
+      "id": "H02",
+      "url": "https://www.wpxi.com/news/local/new-owner-brighton-nursing-home-faces-relicensure-hurdle-after-troubled-operator-exits/QNDQ4JG3MBA4XEQ7NNBPCZ4HRE",
+      "source": "WPXI (Pittsburgh Business Times teaser)",
+      "published": "2026-01-05",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Brighton Rehabilitation and Wellness Center",
+        "street": "NOT FOUND",
+        "city": "NOT FOUND",
+        "state": "NOT FOUND",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "SNF"
+        ],
+        "distress_type": "chapter_11",
+        "stage_text": "property and business assets have been sold; prior owner in Chapter 11",
+        "debtor_or_owner": "Comprehensive Healthcare Management Services",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "NOT FOUND"
+        ],
+        "amounts": [
+          "NOT FOUND"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "PA"
+        ],
+        "city": [
+          "Beaver County (county only)"
+        ],
+        "lender": [
+          "U.S. Department of Housing and Urban Development"
+        ]
+      },
+      "expected_stage": "sale",
+      "traps": "KEY TRAP: the buyer appears only in the linked bizjournals URL slug, never in the text. Any named buyer = URL leak / hallucination. Court district (Middle District of Pennsylvania) is not the facility location."
+    },
+    {
+      "id": "H03",
+      "url": "https://whatnow.com/news/trending/california-based-luxury-senior-living-operator-seeks-chapter-11-bankruptcy/",
+      "source": "WhatNow",
+      "published": "2026-06-30",
+      "is_distress": true,
+      "labels": {
+        "property_name": "AvantGarde Senior Living",
+        "street": "5645 Lindley Ave",
+        "city": "Tarzana",
+        "state": "CA",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "IL",
+          "AL",
+          "MC"
+        ],
+        "distress_type": "chapter_11",
+        "stage_text": "voluntary Chapter 11 petition filed June 29, 2026; case in early stages",
+        "debtor_or_owner": "AvantGarde Senior Living",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "Chapter 11 filed 2026-06-29"
+        ],
+        "amounts": [
+          "estimated assets $10,000,001-$50 million",
+          "estimated liabilities $10,000,001-$50 million"
+        ]
+      },
+      "accept_soft": {
+        "property_name": [
+          "AvantGarde Senior Living & Memory Care"
+        ],
+        "street": [
+          "NOT FOUND (address appears only as a page location tag)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Unsecured creditors (IRS, Capital Management Solutions, McCalla Company Inc.) are not lenders. Three other bankrupt providers (Mirror Lake Village, Senior Home Health Care, a PA facility) are distractors. Communities in Tarzana and La Jolla are unnamed."
+    },
+    {
+      "id": "H04",
+      "url": "https://biztimes.com/menomonee-falls-assisted-living-facility-acquired-by-fannie-mae-at-sheriffs-sale/",
+      "source": "BizTimes Milwaukee",
+      "published": "2024-11-27",
+      "is_distress": true,
+      "labels": {
+        "property_name": "LakeHouse Menomonee",
+        "street": "N84 W17147 Menomnee Ave",
+        "city": "Menomonee Falls",
+        "state": "NOT FOUND",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "AL"
+        ],
+        "distress_type": "foreclosure",
+        "stage_text": "sold at sheriff's sale; acquired by Fannie Mae",
+        "debtor_or_owner": "affiliate of Enlivant",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "Fannie Mae",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "NOT FOUND"
+        ],
+        "amounts": [
+          "valued at $5.7 million"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "WI"
+        ],
+        "lender": [
+          "Fannie Mae"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Buyer is the lender taking the property back (REO), not an operator. Scoring code should tag buyer_role=lender_reo and not count it as 'buyer named'. Sheboygan ($8.1M) and Cedarburg ($3.3M) are distractors. Street name is misspelled in the source; keep it literal."
+    },
+    {
+      "id": "H05",
+      "url": "https://www.keenesentinel.com/news/local/american-house-keene-faces-possible-receivership-due-to-loan-debt/article_b3bc7b6a-a87b-4627-bc41-eeb7d376690d.html",
+      "source": "The Keene Sentinel",
+      "published": "2025-04-22",
+      "is_distress": true,
+      "labels": {
+        "property_name": "American House Keene",
+        "street": "Water Street",
+        "city": "Keene",
+        "state": "NOT FOUND",
+        "units": "109",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "IL",
+          "AL"
+        ],
+        "distress_type": "receivership",
+        "stage_text": "April 1 motion asks court to appoint a receiver after loan default; hearing April 25",
+        "debtor_or_owner": "AH Keene LLC",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "BCWPB LLC",
+        "event_dates": [
+          "loan taken 2018",
+          "loan matured December 2023",
+          "receiver motion April 1",
+          "hearing April 25"
+        ],
+        "amounts": [
+          "$19.1 million original loan",
+          "$18.8 million still owed",
+          "about $500,000 property taxes owed",
+          "property assessed at about $13,226,200"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "NH"
+        ],
+        "lender": [
+          "Regions Bank (original lender, loan assigned to BCWPB)"
+        ],
+        "property_name": [
+          "American House (formerly Bentley Commons)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Receiver is requested, not named. Operator affiliate is American Home Management Co. LLC; owners per 2018 purchase are Black Salmon + American House Senior Living Communities. Strong debt-clock signal: matured loan, debt above assessed value."
+    },
+    {
+      "id": "H06",
+      "url": "https://lifestyle.myeaglecountry.com/story/32867/inspired-healthcare-capital-initiates-strategic-restructuring-to-explore-options-to-maximize-stakeholder-value/",
+      "alt_url": "https://www.prnewswire.com/news-releases/inspired-healthcare-capital-initiates-strategic-restructuring-to-explore-options-to-maximize-stakeholder-value-302676911.html",
+      "source": "PR Newswire (syndicated)",
+      "published": "2026-02-02",
+      "is_distress": true,
+      "labels": {
+        "property_name": "NOT FOUND",
+        "street": "NOT FOUND",
+        "city": "NOT FOUND",
+        "state": "NOT FOUND",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "IL",
+          "AL",
+          "MC"
+        ],
+        "distress_type": "chapter_11",
+        "stage_text": "voluntary Chapter 11 petitions filed (N.D. Tex., Fort Worth); formal marketing and sale process planned",
+        "debtor_or_owner": "Inspired Healthcare Capital",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "Lapis Municipal Opportunities Fund V, LP",
+        "event_dates": [
+          "Chapter 11 filed 2026-02-02",
+          "governance change October 2025"
+        ],
+        "amounts": [
+          "$35 million DIP financing"
+        ]
+      },
+      "accept_soft": {
+        "city": [
+          "Scottsdale (company HQ, not a property)"
+        ],
+        "state": [
+          "AZ (HQ only)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Portfolio-level (35 communities, 14 states, ~2,620 residents), no property named. CRO M. Benjamin Jones (Ankura) and independent managers (CRS Capstone Partners, Trinity River Associates) are not trustees or receivers. Lender = DIP lender only."
+    },
+    {
+      "id": "H07",
+      "url": "https://whitewaterbanner.com/fort-atkinson-health-care-center-put-into-receivership-image/",
+      "source": "Whitewater Banner (excerpt of Milwaukee Journal Sentinel, Aug 7, 2025)",
+      "published": "2025-08-07",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Fort Atkinson Health Care Center; Silver Springs Health Care Center; Heritage Square Health Care Center; Riverdale Health Care Center",
+        "street": "NOT FOUND",
+        "city": "Fort Atkinson; Glendale; Greenfield; Muscoda",
+        "state": "WI",
+        "units": "NOT FOUND",
+        "beds": "87 (Fort Atkinson only)",
+        "care_type": [
+          "SNF"
+        ],
+        "distress_type": "receivership",
+        "stage_text": "four nursing homes placed in court-ordered receivership as of July 31",
+        "debtor_or_owner": "Bedrock Healthcare",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "receivership as of July 31",
+          "previously in receivership in 2019"
+        ],
+        "amounts": [
+          "more than $2.6 million owed in rent and backpay to vendors",
+          "about $900,000 in federal fines",
+          "more than $270,000 in fines at Fort Atkinson"
+        ]
+      },
+      "accept_soft": {
+        "debtor_or_owner": [
+          "Bedrock Healthcare (manager/operator)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Article says the homes were unable to find a new operator: buyer must be NOT FOUND. Fort Atkinson ~34 residents/day on 87 beds = low-occupancy signal (computed in code, not extracted)."
+    },
+    {
+      "id": "H08",
+      "url": "https://citrusheightssentinel.com/2025/07/12/citrus-heights-memory-care-facility-avoid-receivership/",
+      "source": "Citrus Heights Sentinel",
+      "published": "2025-07-12",
+      "is_distress": true,
+      "labels": {
+        "property_name": "The Courte in Citrus Heights",
+        "street": "Sunrise Boulevard",
+        "city": "Citrus Heights",
+        "state": "NOT FOUND",
+        "units": "NOT FOUND",
+        "beds": "48",
+        "care_type": [
+          "MC"
+        ],
+        "distress_type": "loan default; receivership sought (suit dropped)",
+        "stage_text": "lender dropped receivership suit; broker reviewing buyer submissions to sell the property",
+        "debtor_or_owner": "Citrus Heights Memory Care LLC",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "Beyond Loan 5 LLC",
+        "event_dates": [
+          "lawsuit filed January",
+          "amended motion February 12",
+          "bids accepted until June 12"
+        ],
+        "amounts": [
+          "loan default of over $9 million",
+          "$5,650 per month rent"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "CA"
+        ],
+        "distress_type": [
+          "loan_default",
+          "receivership"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Receivership was requested then dropped; extractor must not report an active receivership or a receiver. Hilco Real Estate Sales is the broker; Frontier Senior Living is the manager (not buyers)."
+    },
+    {
+      "id": "H09",
+      "url": "https://www.mpamag.com/us/mortgage-industry/industry-trends/freddie-mac-sues-oregon-memory-care-borrower-seeks-facility-receiver/585068",
+      "source": "Mortgage Professional America",
+      "published": "2026-08-05",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Washington Gardens Memory Care",
+        "street": "NOT FOUND",
+        "city": "Tigard",
+        "state": "OR",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "MC"
+        ],
+        "distress_type": "loan default; receivership sought",
+        "stage_text": "Freddie Mac suit filed Aug 4 asks court to appoint a receiver; no ruling yet",
+        "debtor_or_owner": "Tigard Memory Associates, LLC",
+        "receiver_or_trustee": "Trigild IVL, LLC (proposed)",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "Freddie Mac",
+        "event_dates": [
+          "loan 1 dated 2013-08-30",
+          "loan 2 dated 2016-03-03",
+          "no payment since 2026-02-01",
+          "notice of default 2026-02-20",
+          "acceleration 2026-04-29",
+          "suit filed 2026-08-04"
+        ],
+        "amounts": [
+          "$7,370,000 first loan",
+          "$3,135,000 second loan",
+          "at least $9,906,982.34 owed as of July 1, 2026"
+        ]
+      },
+      "accept_soft": {
+        "lender": [
+          "Berkeley Point Capital LLC / Newmark (originator/servicer)"
+        ],
+        "distress_type": [
+          "receivership",
+          "loan_default"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Proposed receiver (Trigild) must not appear as buyer. Servicer and originator are not the noteholder."
+    },
+    {
+      "id": "H10",
+      "url": "https://www.shawlocal.com/kendall-county-now/2026/01/07/opening-of-oswego-senior-living-facility-delayed-as-contractors-fight-over-payments/",
+      "source": "Shaw Local / Kendall County Now",
+      "published": "2026-01-09",
+      "is_distress": true,
+      "labels": {
+        "property_name": "The Brant at Oswego Senior Living",
+        "street": "101 Chapman Drive",
+        "city": "Oswego",
+        "state": "NOT FOUND",
+        "units": "142",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "IL",
+          "AL",
+          "MC"
+        ],
+        "distress_type": "delayed_opening",
+        "stage_text": "planned spring 2025 opening missed; ~90% complete; contractors in litigation over payments; village mediating",
+        "debtor_or_owner": "NOT FOUND",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "planned opening spring 2025",
+          "liquor license approved March 2024",
+          "liquor license revoked Jan. 6"
+        ],
+        "amounts": [
+          "NOT FOUND"
+        ]
+      },
+      "accept_soft": {
+        "state": [
+          "IL"
+        ],
+        "debtor_or_owner": [
+          "Frontier Senior Living (manager)"
+        ]
+      },
+      "expected_stage": "early",
+      "traps": "Engine B case. The text never says 'lien': mechanics_lien must NOT be extracted. Frontier Senior Living is the manager, not owner or buyer (same manager as H08)."
+    },
+    {
+      "id": "H11",
+      "url": "https://www.aol.com/articles/senior-residents-forced-move-charleston-072612814.html",
+      "source": "WCBD via AOL",
+      "published": "NOT FOUND",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Oaks at Charleston",
+        "street": "NOT FOUND",
+        "city": "Charleston",
+        "state": "SC",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "AL"
+        ],
+        "distress_type": "closure",
+        "stage_text": "facility closing April 10, 2026; residents given 30-day notice",
+        "debtor_or_owner": "NOT FOUND",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "closure 2026-04-10"
+        ],
+        "amounts": [
+          "NOT FOUND"
+        ]
+      },
+      "accept_soft": {
+        "property_name": [
+          "Oaks of Charleston"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "No owner, operator, or reason for closure is given (executive director only). About 100 residents is a resident count, not units."
+    },
+    {
+      "id": "H12",
+      "url": "https://seniorcare.levinassociates.com/2025/01/09/sonida-acquires-in-ohio/",
+      "source": "The SeniorCare Investor (Levin Associates)",
+      "published": "2025-01-09",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Airy Hills at North Bend Crossing",
+        "street": "NOT FOUND",
+        "city": "Cincinnati",
+        "state": "OH",
+        "units": "82 (50 assisted living + 32 memory care)",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "AL",
+          "MC"
+        ],
+        "distress_type": "foreclosure; never opened",
+        "stage_text": "built 2022 but never opened due to foreclosure on construction borrower; sold to Sonida, closed before year end; targeted mid-2025 opening",
+        "debtor_or_owner": "NOT FOUND",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "Sonida Senior Living",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "construction loan 2019",
+          "built 2022",
+          "sale closed before year end",
+          "targeted mid-2025 opening"
+        ],
+        "amounts": [
+          "$16.3 million price",
+          "$18.25 million seller financing incl. $2.0 million capex",
+          "$18.2 million construction debt",
+          "$5.5 million PACE equity",
+          "$5.3 million equity"
+        ]
+      },
+      "accept_soft": {
+        "distress_type": [
+          "foreclosure",
+          "delayed_opening"
+        ],
+        "units": [
+          "82"
+        ]
+      },
+      "expected_stage": "sale",
+      "traps": "Construction lender is 'a regional bank' (unnamed); Northmarq only arranged it. Wellington at North Bend Crossing ($29M, 2016, 121 units) is a distractor. Price-collapse signal: $16.3M price vs ~$29M prior capital stack (computed in code)."
+    },
+    {
+      "id": "H13",
+      "url": "https://www.clickondetroit.com/news/local/2025/08/08/assisted-living-center-in-westland-announces-sudden-closure-amid-history-of-violations/",
+      "source": "WDIV ClickOnDetroit",
+      "published": "2025-08-07",
+      "is_distress": true,
+      "labels": {
+        "property_name": "The Westland House",
+        "street": "NOT FOUND",
+        "city": "Westland",
+        "state": "MI",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "AL"
+        ],
+        "distress_type": "closure",
+        "stage_text": "closing; all residents must vacate by Sept. 1; property previously defaulted",
+        "debtor_or_owner": "Alcore Senior",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "closure announced end of July",
+          "vacate by Sept. 1"
+        ],
+        "amounts": [
+          "over $3 million invested by Alcore"
+        ]
+      },
+      "accept_soft": {
+        "lender": [
+          "HUD"
+        ],
+        "debtor_or_owner": [
+          "Alcore Senior (operator)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "30 residents is not a unit count. The Medical Team is a care vendor, not an operator. Michigan HFA licensee data (LARA) can confirm this one."
+    },
+    {
+      "id": "H14",
+      "url": "https://whatnow.com/news/trending/washington-based-senior-living-facility-enters-chapter-11-operations-to-continue/",
+      "source": "WhatNow",
+      "published": "2026-03-02",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Mirror Lake Village",
+        "street": "31000 9th Pl SW",
+        "city": "Federal Way",
+        "state": "WA",
+        "units": "NOT FOUND",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "IL",
+          "AL",
+          "MC"
+        ],
+        "distress_type": "chapter_11",
+        "stage_text": "voluntary Chapter 11 filed February 27; first-day motions hearing March 4",
+        "debtor_or_owner": "Mirror Lake Village LLC",
+        "receiver_or_trustee": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "Chapter 11 filed February 27",
+          "hearing March 4"
+        ],
+        "amounts": [
+          "estimated assets $10,000,001-$50 million",
+          "estimated liabilities $10,000,001-$50 million"
+        ]
+      },
+      "accept_soft": {
+        "street": [
+          "NOT FOUND (address appears only as a page location tag)"
+        ]
+      },
+      "expected_stage": "late",
+      "traps": "Brightwater Senior Living is the manager, not a buyer. Case number 2:26-bk-10599 (W.D. Wash.) supports CourtListener linking."
+    },
+    {
+      "id": "H15",
+      "url": "https://business.starkvilledailynews.com/starkvilledailynews/article/bizwire-2025-4-14-healthcare-management-partners-announces-the-sale-of-five-florida-senior-living-communities",
+      "source": "Business Wire (syndicated)",
+      "published": "2025-04-14",
+      "is_distress": true,
+      "labels": {
+        "property_name": "Superior Residences of Cala Hills; Superior Residences of Brandon; Superior Residences of Lecanto; Superior Residences of Niceville; Superior Residences of Clermont",
+        "street": "NOT FOUND",
+        "city": "Ocala (Cala Hills); others NOT FOUND",
+        "state": "FL",
+        "units": "60; 46; 60; 90; 114 (total 370)",
+        "beds": "NOT FOUND",
+        "care_type": [
+          "MC",
+          "AL"
+        ],
+        "distress_type": "receivership",
+        "stage_text": "receivership since August 2021; court-approved sale to three buyers completed",
+        "debtor_or_owner": "NOT FOUND",
+        "receiver_or_trustee": "Derek Pierce (Healthcare Management Partners)",
+        "buyer_or_new_operator": "Best Care Senior Living LLC (Cala Hills, Brandon, Lecanto); Partin Place Senior Living, LLC (Niceville); PSH Acquisitions, LLC (Clermont)",
+        "lender": "NOT FOUND",
+        "event_dates": [
+          "receivership August 2021"
+        ],
+        "amounts": [
+          "$22,925,000 aggregate sale price"
+        ]
+      },
+      "accept_soft": {
+        "city": [
+          "Brandon",
+          "Lecanto",
+          "Niceville",
+          "Clermont (town names appear only inside facility names)"
+        ]
+      },
+      "expected_stage": "sale",
+      "traps": "Multi-property: buyer must map to the right facility. Article text has no publication date (date is only in the URL). ~$62K/unit aggregate price = price-collapse candidate (computed in code).",
+      "alt_url": "https://www.businesswire.com/news/home/20250414311138/en/Healthcare-Management-Partners-Announces-the-Sale-of-Five-Florida-Senior-Living-Communities"
+    },
+    {
+      "id": "N16",
+      "url": "https://seniorshousingbusiness.com/charter-appoints-joe-weisenburger-svp-of-capital-markets-business-development/",
+      "source": "Seniors Housing Business",
+      "published": "2026-11-04",
+      "is_distress": false,
+      "labels": {
+        "property_name": "NOT FOUND",
+        "distress_type": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND"
+      },
+      "expected_stage": "NOT FOUND",
+      "traps": "Executive appointment. 'Charter's next chapter' must not trigger a Chapter 11 label."
+    },
+    {
+      "id": "N17",
+      "url": "https://seniorshousingbusiness.com/columbia-pacific-advisors-receives-130m-refinancing-for-community-in-seattle/",
+      "source": "Seniors Housing Business",
+      "published": "2026-11-09",
+      "is_distress": false,
+      "labels": {
+        "property_name": "Murano Senior Living",
+        "city": "Seattle",
+        "units": "243 (215 IL/AL + 28 MC)",
+        "distress_type": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND",
+        "lender": "NOT FOUND"
+      },
+      "expected_stage": "NOT FOUND",
+      "traps": "Healthy refinancing (occupancy above 90%). Lument arranged the loan but is not named as lender. A refinance is not a maturity-default signal."
+    },
+    {
+      "id": "N18",
+      "url": "https://seniorshousingbusiness.com/senior-resource-group-acquires-community-in-metro-chicago-for-212-5m/",
+      "source": "Seniors Housing Business",
+      "published": "2026-11-09",
+      "is_distress": false,
+      "labels": {
+        "property_name": "The Carrington at Lincolnwood",
+        "city": "Lincolnwood",
+        "units": "383",
+        "distress_type": "NOT FOUND",
+        "buyer_or_new_operator": "Senior Resource Group and the TIAA Real Estate Account"
+      },
+      "expected_stage": "NOT FOUND",
+      "traps": "Healthy broker-run sale ($212.5M, JLL) with a named buyer: tests that a buyer alone does not create a distress lead. Should be tagged market_sale. Body says built 2028, caption says 2018 (source typo)."
+    },
+    {
+      "id": "N19",
+      "url": "https://seniorshousingbusiness.com/discovery-acquires-26-management-contracts-from-senior-solutions-management-group/",
+      "source": "Seniors Housing Business",
+      "published": "2026-11-04",
+      "is_distress": false,
+      "labels": {
+        "property_name": "NOT FOUND",
+        "distress_type": "NOT FOUND",
+        "buyer_or_new_operator": "Discovery Senior Living"
+      },
+      "expected_stage": "NOT FOUND",
+      "traps": "Management-contract transfer (26 communities, >2,200 units, 8 states). Operator change without distress: must not become operator_turnover distress on its own."
+    },
+    {
+      "id": "N20",
+      "url": "https://business.mammothtimes.com/mammothtimes/article/newsfile-2025-9-30-discovery-senior-living-completes-new-texas-assisted-living-and-memory-care-development-delivers-quick-lease-up-of-castle-hills-expanded-campus",
+      "source": "Newsfile (syndicated)",
+      "published": "2025-09-30",
+      "is_distress": false,
+      "labels": {
+        "property_name": "Discovery Village Castle Hills Assisted Living and Memory Care",
+        "units": "90 (72 AL + 18 MC)",
+        "distress_type": "NOT FOUND",
+        "buyer_or_new_operator": "NOT FOUND"
+      },
+      "expected_stage": "NOT FOUND",
+      "traps": "On-time opening (contrast with H10). '30% occupancy after two months' is lease-up, not low_occupancy distress."
+    }
+  ]
+}
