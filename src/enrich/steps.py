@@ -18,7 +18,7 @@ from rapidfuzz import fuzz, process
 
 from src.common.bulk import bulk_upsert
 from src.common.config import PROJECT_ROOT, thresholds
-from src.common.normalize import normalize_name, zip5
+from src.common.normalize import entity_stem, normalize_name, zip5
 
 from .match import (
     FacilityIndex, MatchResult, care_types_from_text, clean, hud_best, hud_care_classes, hud_name_variants,
@@ -759,6 +759,10 @@ def step_courts(conn, limit=None) -> dict:
     for r in conn.execute("select org_id::text, facility_id::text from core.facility_role "
                           "where role in ('owner','operator','licensee','indirect_owner')").fetchall():
         org_facs[r["org_id"]].add(r["facility_id"])
+    stem_orgs = defaultdict(set)              # entity stem -> org ids (operator / licensee / owner orgs only)
+    for r in conn.execute("select distinct o.org_id::text, o.name from core.organization o join core.facility_role r "
+                          "using (org_id) where r.role in ('owner','operator','licensee')").fetchall():
+        stem_orgs[entity_stem(r["name"])].add(r["org_id"])
     seen_keys = set()
     for r in rows:
         court, docket = case_key[r["id"]]
@@ -807,6 +811,13 @@ def step_courts(conn, limit=None) -> dict:
         if oid and org_facs.get(oid):
             links = {fid: ["debtor_org", None] for fid in org_facs[oid]}
             stats["linked_via_org"] += 1
+        elif len(entity_stem(debtor).split()) >= 3:
+            # same owner entity under its trust / master-tenant name ('... of X DST' debtor, '... of X MT, LLC'
+            # licence holder): every org with that stem; the stem must be specific (3+ words)
+            fs = {fid for o in stem_orgs.get(entity_stem(debtor), ()) for fid in org_facs.get(o, ())}
+            if fs:
+                links = {fid: ["debtor_org", None] for fid in fs}
+                stats["linked_via_org_stem"] += 1
         if name_link:
             links[name_link[0]] = ["facility_name", name_link[1]]   # a direct name match is the stronger link
         if links:
@@ -839,29 +850,44 @@ def step_manual(conn, limit=None) -> dict:
             stats["case_not_found"] += 1
             continue
         sid = f.get("source_id", "elevenflo")
-        x = conn.execute("select facility_id::text from core.facility_xref where source_id = %s and source_key = %s",
-                         (sid, f["case"])).fetchone()
+        # one case can cover many homes: the key is case + home name (older single-home entries used the case alone)
+        key = f"{f['case']}#{normalize_name(f['name'])}"
+        x = conn.execute("select facility_id::text from core.facility_xref where source_id = %s and source_key = any(%s)",
+                         (sid, [key, f["case"]] if not f.get("multi") else [key])).fetchone()
         vals = (f["name"].upper(), (f.get("city") or "").upper() or None, f["state"], f.get("units"), f.get("beds"),
                 f.get("care_types") or [])
         if not x:
-            # the building may already exist (another loader created it): same name, city and state -> reuse it
-            x = conn.execute("select facility_id::text from core.facility where upper(canonical_name) = %s "
-                             "and upper(coalesce(city, '')) = coalesce(%s, '') and state = %s order by facility_id limit 1",
-                             vals[:3]).fetchone()
+            # the building may already exist (another loader created it): same city and state, and the same name
+            # (exact, or the loader name score >= 90 with one clear winner) -> reuse it
+            from src.discover.licensed.loans import _name_score
+            # no city in the source: the whole state, so the name must then be the only >= 90 match there
+            cands = conn.execute("select facility_id::text, canonical_name from core.facility where state = %s "
+                                 "and (%s::text is null or upper(coalesce(city, '')) = %s)",
+                                 (vals[2], vals[1], vals[1])).fetchall()
+            scored = sorted(((_name_score(f["name"], c["canonical_name"]), c["facility_id"]) for c in cands), reverse=True)
+            if scored and scored[0][0] >= 90 and (len(scored) == 1 or scored[1][0] < 90):
+                x = {"facility_id": scored[0][1]}
+                stats["matched_existing"] += 1
+            elif scored and scored[0][0] >= 90:
+                stats["ambiguous_skipped"] += 1
+                continue
             if x:
                 conn.execute("insert into core.facility_xref (facility_id, source_id, source_key, match_method, "
                              "match_score, review_status) values (%s,%s,%s,'manual',null,'confirmed') "
-                             "on conflict do nothing", (x["facility_id"], sid, f["case"]))
+                             "on conflict do nothing", (x["facility_id"], sid, key))
         if x:
             fid = x["facility_id"]
-            conn.execute("update core.facility set canonical_name=%s, city=%s, state=%s, units=%s, beds=%s, "
-                         "care_types=%s where facility_id = %s", (*vals, fid))
+            # keep the existing name / size unless the entry states them (a public source)
+            conn.execute("update core.facility set city=coalesce(%s, city), state=%s, units=coalesce(%s, units), "
+                         "beds=coalesce(%s, beds), care_types=case when cardinality(%s::text[]) > 0 then %s::text[] "
+                         "else care_types end where facility_id = %s",
+                         (vals[1], vals[2], vals[3], vals[4], vals[5], vals[5], fid))
             stats["facilities_updated"] += 1
         else:
             fid = conn.execute("insert into core.facility (canonical_name, city, state, units, beds, care_types) "
                                "values (%s,%s,%s,%s,%s,%s) returning facility_id::text", vals).fetchone()["facility_id"]
             conn.execute("insert into core.facility_xref (facility_id, source_id, source_key, match_method, "
-                         "match_score, review_status) values (%s,%s,%s,'manual',null,'confirmed')", (fid, sid, f["case"]))
+                         "match_score, review_status) values (%s,%s,%s,'manual',null,'confirmed')", (fid, sid, key))
             stats["facilities_created"] += 1
         conn.execute("insert into core.case_facility (case_id, facility_id, link_method, match_score) "
                      "values (%s,%s,'facility_name',null) on conflict (case_id, facility_id) do nothing",

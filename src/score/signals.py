@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from src.common.bulk import bulk_upsert
-from src.common.normalize import normalize_name
+from src.common.normalize import entity_stem, normalize_name
 
 from src.extract.client import DEFAULT_MODEL as EXTRACTION_MODEL   # only the current model's answers (Gate 3: Sonnet)
 
@@ -472,14 +472,16 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
     prio = {"rejected": 3, "confirmed": 2, "needs_review": 1, "auto": 0}
     for r in conn.execute("select facility_id::text, source_key, review_status from core.facility_xref "
                           "where source_id = any(%(s)s)", {"s": list(COURT_SOURCES)}).fetchall():
-        k = (r["facility_id"], r["source_key"])
+        k = (r["facility_id"], r["source_key"].split("#")[0])     # hand entries: '<court>:<docket>#<home name>'
         if prio[r["review_status"]] >= prio.get(xr.get(k), -1):
             xr[k] = r["review_status"]
     # CMS ownership chain: the facility's own operator / licensee orgs (normalized names)
     operators = defaultdict(set)
+    op_stems = defaultdict(set)              # trust / master-tenant variants of the same entity (entity_stem)
     for r in conn.execute("select r.facility_id::text, o.name from core.facility_role r join core.organization o "
                           "using (org_id) where r.role in ('operator','licensee')").fetchall():
         operators[r["facility_id"]].add(normalize_name(r["name"]))
+        op_stems[r["facility_id"]].add(entity_stem(r["name"]))
     out = defaultdict(list)
     for m in members:
         key = keys.get(m["id"])
@@ -496,6 +498,8 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
                 confirmed_by = "human"
             elif debtor and debtor in operators.get(fid, ()):
                 confirmed_by = "cms_operator"
+            elif debtor and len(entity_stem(debtor).split()) >= 3 and entity_stem(debtor) in op_stems.get(fid, ()):
+                confirmed_by = "cms_operator"    # same entity as the home's operator / licence holder (DST vs MT name)
             elif method == "debtor_org":
                 confirmed_by = "cms_ownership"   # debtor is a parent owner: portfolio link
             else:

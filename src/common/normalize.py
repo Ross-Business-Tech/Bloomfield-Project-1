@@ -95,3 +95,14 @@ def classify_match(score: float) -> str:
     if score >= cfg["needs_review_at_or_above"]:
         return "needs_review"
     return "new"
+
+
+def entity_stem(name: str | None) -> str:
+    """normalize_name without the trust / master-tenant / op-prop-co suffixes one owner group uses for the same home:
+    '<Brand> of Springfield DST' (the trust that owns it) == '<Brand> of Springfield MT, LLC' (its master tenant /
+    licence holder) == '<Brand> of Springfield OpCo'."""
+    # drop before normalize_name ('MT' would otherwise become 'mount')
+    # only as a trailing suffix ('... of X MT, LLC'), never 'Mt. Pleasant'
+    raw = re.sub(r"\b(dst|mt|op\s?co|prop\s?co|master\s+tenant)\b[\s,.]*((llc|l\.l\.c\.|inc|lp|ltd)\.?)?\s*$", " ",
+                 (name or "").strip(), flags=re.I)
+    return normalize_name(raw)

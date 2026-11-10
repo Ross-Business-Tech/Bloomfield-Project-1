@@ -93,3 +93,11 @@ def test_brand_words_and_parent_match():
     assert br.brand_parent("f1", "ACME CARE CENTER LLC") is None           # not an OpCo / PropCo
     br.brand_index["acme"].append(("ACME HEALTH GROUP", ["acme"], 4))      # two different operators: ambiguous
     assert br.brand_parent("f1", "ACME SPRINGFIELD OPCO LLC") is None
+
+
+def test_entity_stem_links_trust_and_master_tenant_names():
+    from src.common.normalize import entity_stem
+    assert entity_stem("Acme Living of Springfield DST") == entity_stem("ACME LIVING OF SPRINGFIELD MT, LLC")
+    assert entity_stem("Acme Springfield OpCo LLC") == entity_stem("Acme Springfield")
+    assert entity_stem("Mt. Pleasant Manor") == "mount pleasant manor"      # only a trailing suffix is dropped
+    assert entity_stem("Acme Living of Springfield DST") != entity_stem("Acme Living of Shelbyville MT, LLC")

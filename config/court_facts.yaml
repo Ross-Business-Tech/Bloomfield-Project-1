@@ -81,6 +81,99 @@ facilities:
     source_id: court_manual
     source_url: https://bondoro.com/artemis-living-filing-alert/
 
+  # Inspired Healthcare Capital Holdings, LLC et al. (N.D. Tex. 26-90004, Ch. 11 filed Feb 2, 2026): communities named in
+  # the debtors' stalking-horse notices, as reported by AltsWire (Jul 23, 2026). States as the article gives them;
+  # inferred from the city for Reno / Las Vegas (NV), Augusta / Athens / Brookhaven (GA), Grapevine (TX) and the five
+  # Florida Salterra locations (the article names the Florida portfolio). Wisconsin homes: no city in the source.
+  - case: "txnb:26-90004"
+    name: "Azalea at Delray Beach"
+    city: "Delray Beach"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Dunedin"
+    city: "Dunedin"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Fort Myers"
+    city: "Fort Myers"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Melbourne"
+    city: "Melbourne"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Largo"
+    city: "Largo"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Pinellas Park"
+    city: "Pinellas Park"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Teal Shores"
+    state: "WI"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Ballard Glenn"
+    state: "WI"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Reno"
+    city: "Reno"
+    state: "NV"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Thrive at Augusta"
+    city: "Augusta"
+    state: "GA"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra at Las Vegas"
+    city: "Las Vegas"
+    state: "NV"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Grapevine"
+    city: "Grapevine"
+    state: "TX"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Orchard at Brookhaven"
+    city: "Brookhaven"
+    state: "GA"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Orchard at Athens"
+    city: "Athens"
+    state: "GA"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Arlington Heights"
+    city: "Arlington Heights"
+    state: "IL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+
 # excluded_sale_evidence: machine-found sale evidence that belongs to a different case.
 excluded_sale_evidence:
   - case: "mieb:25-43883"    # Mission Point of Detroit, LLC (Ch. 11)
