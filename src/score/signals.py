@@ -650,8 +650,10 @@ def manual_buyer_hints(conn, facts: dict, fids=None) -> list[BuyerHint]:
         if b.get("ccn"):
             row = conn.execute("select facility_id::text from core.facility where ccn = %s", (str(b["ccn"]),)).fetchone()
         else:
+            # one home of a multi-home case: its hand-entry key '<court>:<docket>#<home name>'
+            key = f"{b['case']}#{normalize_name(b['home'])}" if b.get("home") else b["case"]
             row = conn.execute("select facility_id::text from core.facility_xref where source_key = %s "
-                               "and match_method = 'manual'", (b["case"],)).fetchone()
+                               "and match_method = 'manual'", (key,)).fetchone()
         if not row:
             raise ValueError(f"config/court_facts.yaml buyers: no facility for {b.get('ccn') or b.get('case')} "
                              "(run python -m src.enrich --step manual first)")

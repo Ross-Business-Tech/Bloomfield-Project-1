@@ -880,12 +880,13 @@ def step_manual(conn, limit=None) -> dict:
             # keep the existing name / size unless the entry states them (a public source)
             conn.execute("update core.facility set city=coalesce(%s, city), state=%s, units=coalesce(%s, units), "
                          "beds=coalesce(%s, beds), care_types=case when cardinality(%s::text[]) > 0 then %s::text[] "
-                         "else care_types end where facility_id = %s",
-                         (vals[1], vals[2], vals[3], vals[4], vals[5], vals[5], fid))
+                         "else care_types end, state_source=%s where facility_id = %s",
+                         (vals[1], vals[2], vals[3], vals[4], vals[5], vals[5], f.get("state_source"), fid))
             stats["facilities_updated"] += 1
         else:
-            fid = conn.execute("insert into core.facility (canonical_name, city, state, units, beds, care_types) "
-                               "values (%s,%s,%s,%s,%s,%s) returning facility_id::text", vals).fetchone()["facility_id"]
+            fid = conn.execute("insert into core.facility (canonical_name, city, state, units, beds, care_types, "
+                               "state_source) values (%s,%s,%s,%s,%s,%s,%s) returning facility_id::text",
+                               (*vals, f.get("state_source"))).fetchone()["facility_id"]
             conn.execute("insert into core.facility_xref (facility_id, source_id, source_key, match_method, "
                          "match_score, review_status) values (%s,%s,%s,'manual',null,'confirmed')", (fid, sid, key))
             stats["facilities_created"] += 1

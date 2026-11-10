@@ -173,6 +173,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("event_date_unknown")
     if not fac.get("city") or not fac.get("state"):
         flags.append("location_incomplete")
+    if fac.get("state_source") == "inferred":
+        flags.append("state_inferred")         # state deduced from the city / portfolio, not stated by the source
     for f in ("senior_housing_maybe", "portfolio_link"):
         if f in best.flags:
             flags.append(f)
@@ -282,6 +284,32 @@ def attach_public(ranked: list[Lead], facs: dict, sigs_by_fac: dict, hints_by_fa
                                  "buyer": b.name if found else "NOT FOUND", "buyer_status": b.status,
                                  "buyer_source_url": b.source_url if found else None, "buyer_chain": b.chain}
     return len(affected)
+
+
+def keep_name_only_out_of_public_top(leads: list) -> int:
+    """Gate 3 court-only rule on the Bloomfield-facing ranking: the public list hides licensed-only leads and shows
+    public twin scores, so a name-only court lead can climb into the public top N even when it is capped internally.
+    Its public score is lowered to just under the N-th confirmed public lead. Returns the number capped."""
+    n = int(rules.court_name_only_cfg()["keep_out_of_top"])
+
+    def pub_score(l):
+        p = l.breakdown.get("public") if "licensed_private" in l.flags else None
+        return float(p["score"]) if p else float(l.score)
+    visible = [l for l in leads if l.tier == "main" and "licensed_only" not in l.flags]
+    ok = sorted((pub_score(l) for l in visible if "court_name_only" not in l.flags), reverse=True)
+    if len(ok) < n:
+        return 0
+    floor, capped = round(ok[n - 1] - 0.01, 2), 0
+    for l in visible:
+        if "court_name_only" in l.flags and pub_score(l) > floor:
+            capped += 1
+            if "licensed_private" in l.flags and l.breakdown.get("public"):
+                l.breakdown["public"]["score"] = floor
+            else:
+                l.breakdown["court_name_only_cap"] = (l.breakdown.get("court_name_only_cap", "") +
+                                                      f"; kept out of the public top {n} ({l.score:g} -> {floor:g})").lstrip("; ")
+                l.score = l.breakdown["total"] = floor
+    return capped
 
 
 def _keep_name_only_out_of_top(leads) -> None:

@@ -101,3 +101,17 @@ def test_entity_stem_links_trust_and_master_tenant_names():
     assert entity_stem("Acme Springfield OpCo LLC") == entity_stem("Acme Springfield")
     assert entity_stem("Mt. Pleasant Manor") == "mount pleasant manor"      # only a trailing suffix is dropped
     assert entity_stem("Acme Living of Springfield DST") != entity_stem("Acme Living of Shelbyville MT, LLC")
+
+
+def test_name_only_court_leads_stay_out_of_the_public_top(monkeypatch):
+    from types import SimpleNamespace as NS
+    from src.score import leads, rules
+    monkeypatch.setattr(rules, "court_name_only_cfg", lambda: {"score_cap": 60, "keep_out_of_top": 3})
+    mk = lambda s, flags=(), pub=None: NS(tier="main", flags=list(flags), score=s,
+                                         breakdown={"public": {"score": pub}} if pub is not None else {})
+    hidden = mk(100, ["licensed_private", "licensed_only"])        # not visible publicly: does not count
+    conf = [mk(90), mk(80), mk(70), mk(60)]
+    name_only = mk(85, ["court_name_only"])
+    lic_name_only = mk(95, ["court_name_only", "licensed_private"], pub=75)
+    n = leads.keep_name_only_out_of_public_top([hidden, *conf, name_only, lic_name_only])
+    assert n == 2 and name_only.score == 69.99 and lic_name_only.breakdown["public"]["score"] == 69.99
