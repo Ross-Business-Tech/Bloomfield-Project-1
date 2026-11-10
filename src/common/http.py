@@ -23,6 +23,13 @@ from .config import CACHE_DIR, USER_AGENT
 _OUR_TOKEN = USER_AGENT.split("/")[0].lower()
 
 
+MAX_RETRY_WAIT = 300   # seconds: a server asking us to wait longer than this ends the run for that source
+
+
+class RateLimited(Exception):
+    """The server's Retry-After is longer than MAX_RETRY_WAIT (a quota, not a short burst limit)."""
+
+
 class SourceBlocked(Exception):
     """The site refused us (401/403) or robots.txt disallows the URL. Never work around this."""
 
@@ -215,7 +222,12 @@ class PoliteClient:
                 raise
             if r.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
                 retry_after = r.headers.get("retry-after", "")
-                self._sleep(float(retry_after) if retry_after.isdigit() else 2 ** (attempt + 1))
+                wait = float(retry_after) if retry_after.isdigit() else 2 ** (attempt + 1)
+                if wait > MAX_RETRY_WAIT:
+                    # e.g. a daily API quota ("try again in 15296 s"): fail now instead of sleeping for hours
+                    raise RateLimited(f"{host}: HTTP {r.status_code}, server asks to wait {wait:.0f}s "
+                                      f"(> {MAX_RETRY_WAIT}s); try again later")
+                self._sleep(wait)
                 continue
             return Response(str(r.url), r.status_code, dict(r.headers), r.content)
         raise AssertionError("unreachable")

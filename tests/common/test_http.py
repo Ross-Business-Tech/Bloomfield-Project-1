@@ -131,3 +131,29 @@ def test_missing_robots_means_allowed(tmp_path):
 
     client, _, _ = make_client(tmp_path, no_robots)
     assert client.get("https://example.org/anything").text == "ok"
+
+
+def test_long_retry_after_gives_up_instead_of_sleeping(tmp_path):
+    import pytest
+    from src.common.http import MAX_RETRY_WAIT, RateLimited
+
+    def quota(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        return httpx.Response(429, headers={"retry-after": str(MAX_RETRY_WAIT * 50)})
+    client, calls, clock = make_client(tmp_path, quota)
+    with pytest.raises(RateLimited):
+        client.get("https://example.org/api")
+    assert clock.now < MAX_RETRY_WAIT            # did not sleep through the quota window
+
+
+def test_short_retry_after_still_waits_and_retries(tmp_path):
+    n = {"api": 0}
+
+    def burst(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        n["api"] += 1
+        return httpx.Response(429, headers={"retry-after": "30"}) if n["api"] == 1 else httpx.Response(200, text="ok")
+    client, calls, clock = make_client(tmp_path, burst)
+    assert client.get("https://example.org/api2").status_code == 200 and n["api"] == 2
