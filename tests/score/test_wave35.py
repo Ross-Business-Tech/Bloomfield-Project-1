@@ -76,3 +76,20 @@ def test_loans_read_rows_with_example_columns(tmp_path):
     assert h["orig_date"] == date(2015, 1, 15) and h["status_history"] == "CC12C" and h["source_label"] == "licensed export"
     assert l["loan_group"] == "Group 1" and l["units"] is None and l["orig_date"] is None
     assert l["loan_status"] == "Special Servicing" and l["transfer_reason"] == "Default" and l["orig_balance"] == 1e6
+
+
+def test_brand_words_and_parent_match():
+    from src.score import rules
+    from src.score.buyers import BuyerResolver
+    city = rules.brand_words("Springfield Illinois", raw=True)
+    assert rules.brand_words("ACME SPRINGFIELD OPCO LLC", extra_generic=city) == ["acme"]
+    assert rules.brand_words("ACME SENIOR LIVING, LLC") == ["acme"]
+    br = BuyerResolver.__new__(BuyerResolver)          # no database: hand-built index
+    br.fac_city = {"f1": ("SPRINGFIELD", "IL")}
+    br.brand_index = {"acme": [("ACME SENIOR LIVING, LLC", ["acme"], 5)],
+                      "rosewood": [("ROSEWOOD CARE INC", ["rosewood"], 3)]}
+    assert br.brand_parent("f1", "ACME SPRINGFIELD OPCO LLC") == "ACME SENIOR LIVING, LLC"
+    assert br.brand_parent("f1", "3920 ROSEWOOD WAY OPCO LLC") is None     # address-named shell
+    assert br.brand_parent("f1", "ACME CARE CENTER LLC") is None           # not an OpCo / PropCo
+    br.brand_index["acme"].append(("ACME HEALTH GROUP", ["acme"], 4))      # two different operators: ambiguous
+    assert br.brand_parent("f1", "ACME SPRINGFIELD OPCO LLC") is None

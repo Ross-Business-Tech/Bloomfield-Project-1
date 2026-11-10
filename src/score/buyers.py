@@ -7,6 +7,8 @@ CMS chain performance is attached when the buyer org (or an org with the same no
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -89,6 +91,46 @@ class BuyerResolver:
         for x in rules.buyer_orgs():
             for n in [x["name"]] + list(x.get("aliases") or []):
                 self.known[normalize_name(n)] = x
+        # parent-brand index (Wave 4): operators / managers / licensees that run 2+ homes, by their first brand word.
+        # Sources: CMS roles and the latest state licence rosters (management company / licensee).
+        self.fac_city = {r["f"]: (r["city"] or "", r["state"] or "") for r in conn.execute(
+            "select facility_id::text f, city, state from core.facility").fetchall()}
+        homes: dict[str, set] = {}
+        for r in conn.execute("select o.name, r.facility_id::text f from core.facility_role r join core.organization o "
+                              "using (org_id) where r.role in ('operator','licensee','owner','indirect_owner')").fetchall():
+            homes.setdefault(r["name"], set()).add(r["f"])
+        # every roster snapshot counts (an operator that has since handed homes on is still that brand's operator)
+        for r in conn.execute("select distinct state, license_no, licensee, management_co from stg.state_license "
+                              "where licensee is not null or management_co is not null").fetchall():
+            for n in (r["management_co"], r["licensee"]):
+                if n:
+                    homes.setdefault(n, set()).add(f"{r['state']}:{r['license_no']}")
+        self.brand_index: dict[str, list] = {}
+        for name, fs in homes.items():
+            words = rules.brand_words(name)
+            if words and len(fs) >= 2 and not rules.is_shell_buyer(name, None) and not re.match(r"\s*\d", name):
+                self.brand_index.setdefault(words[0], []).append((name, words, len(fs)))
+
+    def brand_parent(self, facility_id: str, buyer: str) -> str | None:
+        """'Acme Springfield OpCo LLC' -> 'Acme Senior Living, LLC': the one multi-home operator whose brand words
+        are all in the shell's name once legal / generic words and the home's own city and state are removed, and
+        whose first brand word is the shell's first. Several different candidate operators = ambiguous = None."""
+        from src.enrich.steps import party_key
+        # only explicit OpCo / PropCo legal shells; never an address-named one ("3920 Rosewood Way OpCo") and never a
+        # company named after the home itself (its first word is usually just a common place word)
+        if not rules._SHELL.search(buyer or "") or re.match(r"\s*\d", buyer or ""):
+            return None
+        city, state = self.fac_city.get(facility_id, ("", ""))
+        words = rules.brand_words(buyer, extra_generic=rules.brand_words(f"{city} {rules.state_name(state)}", raw=True))
+        if not words:
+            return None
+        cands = {}
+        for name, pw, n in self.brand_index.get(words[0], []):
+            if set(pw) <= set(words) and normalize_name(name) != normalize_name(buyer):
+                cands.setdefault(party_key(name), (n, name))
+        if len(cands) != 1:
+            return None
+        return next(iter(cands.values()))[1]
 
     def org_for(self, name: str | None, org_id: str | None):
         if org_id:
@@ -136,6 +178,8 @@ class BuyerResolver:
             parent = self.cms_parent(facility_id, first)
             if parent:
                 b.parent, b.parent_basis = parent, "cms_ownership"
+            elif (brand := self.brand_parent(facility_id, first)):
+                b.parent, b.parent_basis = brand, "brand_match"      # same brand, multi-home operator (inferred)
             else:
                 b.status = "shell"
         if b.parent:

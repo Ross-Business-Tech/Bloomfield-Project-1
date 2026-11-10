@@ -354,6 +354,40 @@ def is_shell_buyer(buyer: str | None, facility_name: str | None) -> bool:
     return bool(_SHELL.search(buyer)) or (bool(facility_name) and normalize_name(buyer) == normalize_name(facility_name))
 
 
+# Parent-brand match (Wave 4): words that say nothing about which company a name belongs to
+_BRAND_GENERIC = set("""senior seniors living life care healthcare health opco propco op prop co tenant tenants holdings
+holding management mgmt manager services service group partners partner company communities community properties
+property operations operating operator operators assisted memory residence residences of at the and llc inc lp llp ltd
+corp corporation pllc trs sh home homes house village place center centre retirement rehabilitation rehab nursing
+skilled facility facilities associates enterprises ventures investments investment real estate realty acquisitions
+acquisition north south east west new ii iii iv vi""".split())
+_STATE_NAMES = {"AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+                "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+                "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+                "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts",
+                "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana",
+                "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico",
+                "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+                "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+                "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+                "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"}
+
+
+def state_name(code: str | None) -> str:
+    return _STATE_NAMES.get((code or "").upper(), "")
+
+
+def brand_words(name: str | None, extra_generic=(), raw: bool = False) -> list[str]:
+    """Distinctive words of an organization name in order ('Acme Springfield OpCo LLC' with the home's city
+    removed -> ['chapters']). raw=True: every word (used to build the extra list)."""
+    words = re.findall(r"[a-z0-9]+", (name or "").lower())
+    if raw:
+        return words
+    drop = _BRAND_GENERIC | set(extra_generic) | {w.lower() for s in _STATE_NAMES.values() for w in s.split()} \
+        | {c.lower() for c in _STATE_NAMES}
+    return [w for w in words if w not in drop and len(w) > 2 and not w.isdigit()]
+
+
 _MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                        "dec"], 1)}
 
