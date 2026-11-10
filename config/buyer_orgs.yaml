@@ -1,0 +1,58 @@
+# Hand-checked buyer facts (Gate 3). Read by src/score (buyer type, parent merge). Every entry needs a source_url.
+#   name:    as written in sources; aliases: other spellings (matched after name normalization)
+#   type:    operator | PE/investor | public company | REIT | hospital/public | lender
+#   parent:  merge this buyer into its parent (only with a source that says so)
+# Anything not listed here gets a type from its name (src/score/rules.py _TYPE_WORDS), labeled basis 'name'/'default'.
+orgs:
+  - name: The Ensign Group, Inc.
+    aliases: [The Ensign Group, Ensign, Ensign Group]
+    type: public company
+    note: '10-K FY2025 cover: common stock ENSG, NASDAQ Global Select Market'
+    source_url: https://s203.q4cdn.com/190017989/files/doc_financials/2025/q4/ENSG-12-31-2025-10K.pdf
+  - name: Standard Bearer Healthcare REIT, Inc.
+    aliases: [Standard Bearer Healthcare REIT, Standard Bearer]
+    type: public company
+    parent: The Ensign Group, Inc.
+    note: 'Ensign 10-K FY2025: "Standard Bearer Healthcare REIT, Inc. (Standard Bearer), our captive REIT"'
+    source_url: https://s203.q4cdn.com/190017989/files/doc_financials/2025/q4/ENSG-12-31-2025-10K.pdf
+  - name: Pulaski Memorial Hospital
+    type: hospital/public
+    note: Gate 3 decision - a hospital license holder like the hospital districts; 0 buyer points, not a repeat buyer
+    source_url: https://data.cms.gov/data-api/v1/dataset/f557a6ed-95b3-4a22-8433-4175db2dec1c/data?offset=5000&size=5000
+  # Wave 3.5 decision (Nov 10, 2026): large / public operators = low fit for a bridge lender (40% buyer points);
+  # REITs as before. `match`: any buyer whose normalized name contains one of these words gets this type.
+  - name: Brookdale Senior Living Inc.
+    match: [brookdale, bkd]
+    type: public company
+    note: 'NYSE: BKD; user decision: large/public, low fit'
+    source_url: https://www.brookdale.com/
+  - name: Sonida Senior Living, Inc.
+    match: [sonida]
+    type: public company
+    note: 'NYSE: SNDA; user decision: large/public, low fit'
+    source_url: https://www.sonidaseniorliving.com/
+  - name: Morada Senior Living
+    match: [morada]
+    type: large operator
+    note: 'user decision: large operator, low fit'
+    source_url: https://www.moradaseniorliving.com/
+  - name: Discovery Senior Living
+    match: [discovery senior living, arvum]
+    type: large operator
+    note: 'user decision: large operator, low fit (Arvum = Discovery brand)'
+    source_url: https://www.discoveryseniorliving.com/
+  - name: Trilogy Health Services
+    match: [trilogy]
+    type: large operator
+    note: 'user decision: large operator, low fit. Texas "Trilogy Senior Living Management, LLC" may be a different company (not checked)'
+    source_url: https://www.trilogyhs.com/
+  - name: Welltower Inc.
+    match: [welltower]
+    type: REIT
+    note: 'user decision: REIT'
+    source_url: https://welltower.com/
+  - name: National Healthcare Properties
+    match: [national healthcare properties]
+    type: REIT
+    note: 'user decision: REIT (senior housing and outpatient medical REIT)'
+    source_url: https://www.nhpreit.com/

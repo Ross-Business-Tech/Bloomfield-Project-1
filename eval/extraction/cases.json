@@ -1,0 +1,868 @@
+{
+ "status": "labels pending human confirmation",
+ "labeled_by": "extractor agent (Claude), 2026-11-10, by reading each text",
+ "how_to_confirm": "Read each case's text/source_url and check `expected`; edit any label, then change status to 'confirmed by <name> <date>'.",
+ "format": "See eval/extraction/scorer.py docstring. Long articles (>4000 chars) store only an excerpt; the eval reads the full text from raw.document by doc_id.",
+ "cases": [
+  {
+   "doc_id": 28,
+   "source_id": "shb_rss",
+   "source_url": "https://seniorshousingbusiness.com/slib-arranges-sale-of-126-bed-skilled-nursing-facility-in-metro-denver",
+   "title": "SLIB Arranges Sale of 126-Bed Skilled Nursing Facility in Metro Denver",
+   "kind": "distress",
+   "content_hash": "227ada3e77f04ad68c73bda73e9d61e858fd188506c2b8e308df00c13ed17723",
+   "text": "",
+   "excerpt": "AcquisitionsColoradoNewsSkilled Nursing\n\nSLIB Arranges Sale of 126-Bed Skilled Nursing Facility in Metro Denver\n\nby Hayden Spiess\nNovember 4, 2026\n\nNovember 4, 2026\n\n12\n\nCASTLE ROCK, Colo. — Senior Living Investment Brokerage (SLIB) has arranged the sale of Brookside Inn, a skilled nursing facility ",
+   "label_note": "",
+   "expected": {
+    "property_name": "Brookside Inn",
+    "street": "NOT FOUND",
+    "city": "Castle Rock",
+    "state": [
+     "Colo.",
+     "Colorado"
+    ],
+    "units": "NOT FOUND",
+    "beds": "126",
+    "care_type": {
+     "required": [
+      "skilled_nursing"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "sale"
+     ],
+     "optional": []
+    },
+    "stage_text": "has arranged the sale of Brookside Inn",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 4343,
+   "source_id": "shb_rss",
+   "source_url": "https://seniorshousingbusiness.com/kiser-group-brokers-76m-sale-of-skilled-nursing-facility-in-new-york",
+   "title": "Kiser Group Brokers $76M Sale of Skilled Nursing Facility in New York",
+   "kind": "distress",
+   "content_hash": "87e74e536351782f9778ad3b31f6ae12d06cffe8d4854c13958975e0d7be9b3f",
+   "text": "",
+   "excerpt": "MAMARONECK, N.Y. — Kiser Group has brokered the sale of Sarah Neuman Skilled Nursing Facility in Mamaroneck, roughly 30 miles northeast of New York City. The property totals 250 beds.\n\nMark Myers of Kiser Group arranged the sale. The seller was a religious nonprofit organization.\n\nAccording to Kiser",
+   "label_note": "",
+   "expected": {
+    "property_name": [
+     "Sarah Neuman Skilled Nursing Facility",
+     "Sarah Neuman"
+    ],
+    "street": "NOT FOUND",
+    "city": "Mamaroneck",
+    "state": [
+     "N.Y.",
+     "New York"
+    ],
+    "units": "NOT FOUND",
+    "beds": "250",
+    "care_type": {
+     "required": [
+      "skilled_nursing"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "sale"
+     ],
+     "optional": []
+    },
+    "stage_text": "has brokered the sale of Sarah Neuman Skilled Nursing Facility",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": {
+     "required": [
+      "$76 million"
+     ],
+     "optional": [
+      "$84 million",
+      "$72 million",
+      "$5 million"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 47,
+   "source_id": "shb_rss",
+   "source_url": "https://seniorshousingbusiness.com/decker-arranges-sale-of-92-unit-assisted-living-property-in-pennsylvania",
+   "title": "Decker Arranges Sale of 92-Unit Assisted Living Property in Pennsylvania",
+   "kind": "distress",
+   "content_hash": "e3f35e4285bdf86ccc933a3b4de08b3993752d3c32ee10633d05c861c10d80ad",
+   "text": "",
+   "excerpt": "Laurels Senior Living Community has been under family ownership since opening in 2003.\n\nAcquisitionsAssisted LivingNewsPennsylvania\n\nDecker Arranges Sale of 92-Unit Assisted Living Property in Pennsylvania\n\nby Hayden Spiess\nOctober 23, 2026\n\nOctober 23, 2026\n\n35\n\nHAZLETON, Pa. — Decker Healthcare Gr",
+   "label_note": "",
+   "expected": {
+    "property_name": "Laurels Senior Living Community",
+    "street": "NOT FOUND",
+    "city": "Hazleton",
+    "state": [
+     "Pa.",
+     "Pennsylvania"
+    ],
+    "units": "92",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [
+      "assisted_living"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "sale"
+     ],
+     "optional": []
+    },
+    "stage_text": "acquired Laurels Senior Living Community for an undisclosed price",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 2354,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2025/07/10/post-acute-operator-genesis-healthcare-files-for-ch-11-bankruptcy",
+   "title": "Post-Acute Operator Genesis HealthCare Files for Ch. 11 Bankruptcy",
+   "kind": "distress",
+   "content_hash": "661dfa27c234f3d33f12904086a61fc46f325c00c9ecbf71307da69ed5569f0d",
+   "text": "",
+   "excerpt": "Post-acute senior care operator Genesis HealthCare has filed for Chapter 11 bankruptcy.\n\nGenesis HealthCare operates 15 assisted living communities and senior living properties, according to its website. In court records reviewed by Skilled Nursing News, a Senior Housing News sister publication, Gen",
+   "label_note": "Buyer is an unnamed affiliate of ReGen Healthcare: naming ReGen or NOT FOUND both accepted.",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [],
+     "optional": [
+      "assisted_living",
+      "skilled_nursing",
+      "senior_housing_other"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "chapter_11"
+     ],
+     "optional": [
+      "sale",
+      "loan_or_lease_default"
+     ]
+    },
+    "stage_text": "has filed for Chapter 11 bankruptcy",
+    "debtor_or_owner": [
+     "Genesis HealthCare"
+    ],
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": [
+     "ReGen Healthcare",
+     "NOT FOUND"
+    ],
+    "lender": [
+     "Omega Healthcare Investors",
+     "Omega"
+    ],
+    "event_dates": "NOT FOUND",
+    "amounts": {
+     "required": [
+      "$8 million"
+     ],
+     "optional": [
+      "$4.2 million"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 2566,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2025/04/03/pacifica-management-platform-files-for-ch-7-bankruptcy",
+   "title": "UPDATED: Pacifica Senior Living Management Platform Files for Ch. 7 Bankruptcy",
+   "kind": "distress",
+   "content_hash": "b1097201666d988946960801322e812498d70f542bdf32868fa7d38158917bdd",
+   "text": "",
+   "excerpt": "Correction: An earlier version of this story misstated that the bankruptcy involved Pacifica’s entire senior living portfolio. That is incorrect. The platform that declared bankruptcy operates about two-dozen communities and represents a subset of Pacifica Companies’ total senior living operations. ",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [],
+     "optional": [
+      "assisted_living",
+      "memory_care",
+      "senior_housing_other"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "chapter_7"
+     ],
+     "optional": []
+    },
+    "stage_text": "has filed for Chapter 7 bankruptcy",
+    "debtor_or_owner": [
+     "Pacifica Senior Living LLC",
+     "Pacifica Senior Living"
+    ],
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": {
+     "required": [
+      "March 24"
+     ],
+     "optional": []
+    },
+    "amounts": {
+     "required": [],
+     "optional": [
+      "$10 million",
+      "$50 million",
+      "$50,000"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 2685,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2025/02/10/senior-living-nonprofit-lutheran-life-files-for-ch-11-bankruptcy",
+   "title": "Senior Living Nonprofit Lutheran Life Files for Ch. 11 Bankruptcy",
+   "kind": "distress",
+   "content_hash": "3e05826e575d6f5b09555af758119215afa46a30f4c489edb678ff8f615dccd6",
+   "text": "",
+   "excerpt": "Continuing care retirement community (CCRC) operator Lutheran Life Communities is filing for Chapter 11 bankruptcy as it seeks to reorganize its operations and financial holdings.\n\nThe Arlington Heights, Illinois-based nonprofit’s board adopted a bankruptcy resolution on Feb. 3 as it continues to se",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [
+      "ccrc"
+     ],
+     "optional": [
+      "skilled_nursing"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "chapter_11"
+     ],
+     "optional": []
+    },
+    "stage_text": "is filing for Chapter 11 bankruptcy",
+    "debtor_or_owner": "Lutheran Life Communities",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": {
+     "required": [
+      "Feb. 3"
+     ],
+     "optional": []
+    },
+    "amounts": {
+     "required": [],
+     "optional": [
+      "$10 million",
+      "$50 million",
+      "$1 million",
+      "$808,084"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 3560,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2025/06/nursing-home-chain-lavie-completes-bankruptcy-as-omega-transfers-master-lease-to-new-tenant",
+   "title": "Nursing Home Chain LaVie Completes Bankruptcy as Omega Transfers Master Lease to New Tenant",
+   "kind": "distress",
+   "content_hash": "5e6da69321493cc5e3298582d9647ec934034d03f696c1f12e61875863884fbb",
+   "text": "",
+   "excerpt": "Omega Healthcare Investors (NYSE:OHI) announced on Tuesday that its tenant LaVie Care Centers has completed its bankruptcy proceedings effective June 1, and the Omega-LaVie master lease has been assigned to a new entity called Avardis.\n\n“Monthly contractual rent amounts under the Avardis lease remai",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [],
+     "optional": [
+      "skilled_nursing",
+      "assisted_living"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "chapter_11",
+      "operator_change"
+     ],
+     "optional": []
+    },
+    "stage_text": "has completed its bankruptcy proceedings effective June 1",
+    "debtor_or_owner": "LaVie Care Centers",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "Avardis",
+    "lender": [
+     "Omega Healthcare Investors",
+     "Omega"
+    ],
+    "event_dates": {
+     "required": [
+      "June 1"
+     ],
+     "optional": []
+    },
+    "amounts": {
+     "required": [
+      "$1.1 billion",
+      "$622 million",
+      "$10 million"
+     ],
+     "optional": [
+      "$277 million"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 3837,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2024/11/athena-health-cares-nursing-home-closures-continue-to-mount",
+   "title": "Athena Health Care’s Nursing Home Closures Continue to Mount",
+   "kind": "distress",
+   "content_hash": "ef0514260fbb60d048fea0c64f116a37a9e53bd133aaa7eabf964dc92a8f2c3b",
+   "text": "",
+   "excerpt": "Athena Health Care, once a dominant player in Connecticut’s nursing home sector, plans to close two more facilities in the state, further consolidating its operations as it struggles with financial difficulties stemming from staffing shortages, rising operational costs, and the need for costly build",
+   "label_note": "Only one of the two closing facilities is named (Countryside Manor). Sale of 10 homes is background.",
+   "expected": {
+    "property_name": "Countryside Manor",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": [
+     "Connecticut",
+     "NOT FOUND"
+    ],
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [
+      "skilled_nursing"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "closure"
+     ],
+     "optional": [
+      "sale"
+     ]
+    },
+    "stage_text": "plans to close two more facilities in the state",
+    "debtor_or_owner": "Athena Health Care",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": [
+     "NOT FOUND",
+     "National Health Care Associates"
+    ],
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": {
+     "required": [],
+     "optional": [
+      "$750,000"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 3218,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2026/02/next-step-properties-placed-in-receivership-icare-tasked-with-interim-operations",
+   "title": "Next Step Properties Placed in Receivership, iCare Tasked With Interim Operations",
+   "kind": "distress",
+   "content_hash": "17f0847fb73511ced084ab77068c644e4428884f5977debaf6b9b61c8aa115af",
+   "text": "",
+   "excerpt": "Eleven nursing homes operated by Massachusetts-based Next Step Healthcare have been placed in court-appointed receivership, with iCare Health Network in Connecticut hired to manage day-to-day operations.\n\nA Middlesex County judge made the decision following news from Next Step’s landlord, companies ",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": [
+     "NOT FOUND",
+     "Massachusetts"
+    ],
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [
+      "skilled_nursing"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "receivership"
+     ],
+     "optional": [
+      "loan_or_lease_default",
+      "operator_change"
+     ]
+    },
+    "stage_text": "have been placed in court-appointed receivership",
+    "debtor_or_owner": "Next Step Healthcare",
+    "receiver_or_trustee": "Michael Flanagan",
+    "buyer_or_new_operator": [
+     "iCare Health Network",
+     "iCare"
+    ],
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": {
+     "required": [
+      "$15 million",
+      "$3 million"
+     ],
+     "optional": []
+    }
+   }
+  },
+  {
+   "doc_id": 3426,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2025/09/skilled-nursing-operator-national-healthcare-corp-in-default-with-nhi",
+   "title": "Skilled Nursing Operator National HealthCare Corp. In Default With NHI",
+   "kind": "distress",
+   "content_hash": "414ba488b8f18e6286db8b567b50e9ab519c3c1f25ad4d8f9540fa9f3e2a8f8d",
+   "text": "",
+   "excerpt": "An affiliate of National HealthCare Corporation (NYSEAMERICAN: NHC) is in default under its master lease with National Health Investors (NYSE: NHI) due to non-compliance with certain non-monetary provisions.\n\nThe NHC affiliate operates 32 skilled nursing facilities (SNFs) and three assisted living f",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [],
+     "optional": [
+      "skilled_nursing",
+      "assisted_living"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "loan_or_lease_default"
+     ],
+     "optional": []
+    },
+    "stage_text": "is in default under its master lease with National Health Investors",
+    "debtor_or_owner": [
+     "National HealthCare Corporation",
+     "National HealthCare Corp.",
+     "NHC",
+     "National HealthCare Corporation; National Health Investors"
+    ],
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": {
+     "required": [
+      "July 29, 2025",
+      "Aug. 29"
+     ],
+     "optional": [
+      "December 2026"
+     ]
+    },
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 4733,
+   "source_id": "elevenflo",
+   "source_url": "https://elevenflo.com/cases/family-of-care-real-estate-holding-co-inc-and-charles-7875",
+   "title": "Family of Care Real Estate Holding Co., Inc. and Charles County Nursing and Rehabilitation Center - ElevenFlo case summary",
+   "kind": "distress",
+   "content_hash": "6d4f1b6b35d8044945019a64224ee1125627dc3e970a83b7e5bee8a43e4960d8",
+   "text": "",
+   "excerpt": "Family of Care Real Estate Holding Co., Inc. and Charles County Nursing and Rehabilitation Center bankruptcy - ElevenFlo Family of Care Real Estate Holding Co., Inc. and Charles County Nursing and Rehabilitation Center Ch. 11 Filed 24-18782 · D. Md. · Judge Lori S. Simpson Overview Docket Pro Data H",
+   "label_note": "Court summary with almost no narrative; care type is only implied by the facility name.",
+   "expected": {
+    "property_name": "Charles County Nursing and Rehabilitation Center",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [],
+     "optional": [
+      "skilled_nursing"
+     ]
+    },
+    "distress_type": {
+     "required": [
+      "chapter_11"
+     ],
+     "optional": []
+    },
+    "stage_text": "Ch. 11 Filed",
+    "debtor_or_owner": [
+     "Family of Care Real Estate Holding Co., Inc.",
+     "Family of Care Real Estate Holding Co., Inc.; Charles County Nursing and Rehabilitation Center"
+    ],
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": {
+     "required": [
+      "Oct 18, 2024"
+     ],
+     "optional": []
+    },
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 4704,
+   "source_id": "elevenflo",
+   "source_url": "https://elevenflo.com/cases/guardian-elder-care-at-johnstown-llc-d-b-a-richland-2580",
+   "title": "Guardian Elder Care at Johnstown, LLC d/b/a Richland Healthcare and Rehabilitation Center - ElevenFlo case summary",
+   "kind": "distress",
+   "content_hash": "1c1b34fc4fcd791f6eefc6720bb3caf088262df3e5920cef79475b683e6b2a33",
+   "text": "",
+   "excerpt": "Guardian Elder Care at Johnstown, LLC d/b/a Richland Healthcare and Rehabilitation Center bankruptcy - ElevenFlo G Guardian Elder Care at Johnstown, LLC d/b/a Richland Healthcare and Rehabilitation Center Ch. 11 Dismissed 24-70299 · W.D. Pa. · Judge Jeffery A. Deller Overview Docket 3,681 Pro Data P",
+   "label_note": "Court summary; city/state of the facility are not stated outright, so NOT FOUND or the debtor-name town are accepted.",
+   "expected": {
+    "property_name": "Richland Healthcare and Rehabilitation Center",
+    "street": "NOT FOUND",
+    "city": [
+     "NOT FOUND",
+     "Johnstown"
+    ],
+    "state": [
+     "NOT FOUND",
+     "Pennsylvania"
+    ],
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": {
+     "required": [
+      "skilled_nursing"
+     ],
+     "optional": []
+    },
+    "distress_type": {
+     "required": [
+      "chapter_11"
+     ],
+     "optional": [
+      "sale"
+     ]
+    },
+    "stage_text": "was dismissed without prejudice on September 30, 2026",
+    "debtor_or_owner": [
+     "Guardian Elder Care at Johnstown, LLC",
+     "Guardian Elder Care at Johnstown",
+     "Guardian Elder Care at Johnstown, LLC; Guardian Healthcare"
+    ],
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": [
+     "NOT FOUND",
+     "Cuarzo"
+    ],
+    "lender": [
+     "NOT FOUND",
+     "S&T Bank"
+    ],
+    "event_dates": {
+     "required": [
+      "September 30, 2026",
+      "July 29, 2024"
+     ],
+     "optional": [
+      "October 29, 2024",
+      "March 2025",
+      "Sep 18",
+      "Sep 18, 2026"
+     ]
+    },
+    "amounts": {
+     "required": [],
+     "optional": [
+      "$1M",
+      "$10M",
+      "$50M",
+      "$66.2M"
+     ]
+    }
+   }
+  },
+  {
+   "doc_id": 1202,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2026/09/22/voting-for-the-shn-product-of-the-year-awards-closes-september-30",
+   "title": "Voting for the SHN Product of the Year Awards Closes September 30",
+   "kind": "irrelevant",
+   "content_hash": "3559da9d0f8142fe324c504afd0a0a21d0ed286c6b96099580853a48d53f8b37",
+   "text": "",
+   "excerpt": "Voting for the Senior Housing News (SHN) Product of the Year Awards closes on September 30, 2026 at 11:59pm CDT.\n\nInstructions for Voting:\n\nGo to the SHN Product of the Year Awards site at https://poyawards.seniorhousingnews.com/.\n\nDownload the Nominee eBook to review all entries.\n\nClick on the any ",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 1683,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2026/05/21/omega-healthcare-ceo-pickett-to-retire-in-planned-leadership-transition",
+   "title": "Omega Healthcare CEO Pickett to Retire in Planned Leadership Transition",
+   "kind": "irrelevant",
+   "content_hash": "32b7ee78a78abba7f073362b44c3e848c9932e784de5bbb118e19d43f4be94ef",
+   "text": "",
+   "excerpt": "Omega Healthcare Investors (NYSE: OHI) CEO Taylor Pickett is stepping down from his post on Oct. 1 and current President Matthew Gourmand is ascending to the CEO role.\n\nOmega on May 21 announced the leadership transition in conjunction with the planned retirement of Pickett, who also is stepping dow",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 2759,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2025/01/07/distinctive-living-adds-sales-marketing-vice-presidents-in-exec-team-reorganization",
+   "title": "Distinctive Living Adds Sales, Marketing Vice Presidents in Exec Team Reorganization",
+   "kind": "irrelevant",
+   "content_hash": "19ffe3523e4597aef73b81a90445c0a6831c5286a8875f7cad1cacb526f3b5f1",
+   "text": "",
+   "excerpt": "Distinctive Living recently named two vice presidents to help spearhead sales and marketing efforts as part of an effort to reorganize its executive team and prepare it for growth in 2025.\n\nThe Freehold, New Jersey-based operator this week announced it had brought on Kristina Vance as vice president",
+   "label_note": "Mentions a 2024 acquisition of Validus only as background -> all NOT FOUND.",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 3437,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2025/09/cms-moves-to-rescind-federal-nursing-home-staffing-mandate",
+   "title": "CMS Moves To Rescind Federal Nursing Home Staffing Mandate",
+   "kind": "irrelevant",
+   "content_hash": "1267f3fdf360545a77b32ea9d5e7f257054a1a818632057d4124875e603bf117",
+   "text": "",
+   "excerpt": "The Centers for Medicare & Medicaid Services (CMS) is taking steps to rescind the controversial federal staffing mandate for nursing homes.\n\nThe White House Office of Management and Budget (OMB) is reviewing an Interim Final Rule from CMS with the title “Repeal of Minimum Staffing Standards for Long",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 1626,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2026/06/22/former-harmony-ceo-a-place-for-mom-exec-rejoins-brookdale-senior-living-to-lead-sales",
+   "title": "Former Harmony CEO, A Place for Mom Exec Rejoins Brookdale Senior Living to Lead Sales",
+   "kind": "irrelevant",
+   "content_hash": "ee57a6e88bf7c478b34f008e573ab7746f84deb78424dcc67e6e5e71d5b360aa",
+   "text": "",
+   "excerpt": "Brookdale Senior Living has hired Margaret Cabell as chief sales officer, welcoming her back into the company after more than half a decade away.\n\nCabell previously worked at Brentwood, Tennessee-based Brookdale for 16 years across various roles spanning operations, marketing and sales. She left Bro",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 1535,
+   "source_id": "shn_rss",
+   "source_url": "https://seniorhousingnews.com/2026/07/28/future-leader-megan-herwig-director-of-resident-engagement-priority-life-care",
+   "title": "Future Leader: Megan Herwig, Director of Resident Engagement, Priority Life Care",
+   "kind": "irrelevant",
+   "content_hash": "6a0d6ff5d33490f5601bd28a2dd1cea4d9997fc35025a8a87806d80a1e9aa512",
+   "text": "",
+   "excerpt": "Megan Herwig, Director of Resident Engagement at Priority Life Care, has been named to the Future Leaders Class of 2026 by Senior Housing News.\n\nTo become a Future Leader, an individual is nominated by their peers. The candidate must be a high-performing employee who is 40 years of age or younger, a",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 3268,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2025/12/the-true-cost-of-falls-by-the-numbers",
+   "title": "The True Cost of Falls — By the Numbers",
+   "kind": "irrelevant",
+   "content_hash": "6967be6113c6cf58c6e1a09d87ca13d30abbb1143bffa2ef0a5192714aa1e9e3",
+   "text": "",
+   "excerpt": "Skilled nursing providers are united in their desire to prevent and eliminate falls in their communities. Yet falls still happen given the nature of an often frail and aging resident population who may have reduced mobility and cognition. And the cost of falls is a significant concern among SNF oper",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  },
+  {
+   "doc_id": 3703,
+   "source_id": "snn_rss",
+   "source_url": "https://skillednursingnews.com/2025/03/nursing-home-room-costs-increase-by-7-to-9-as-all-long-term-care-costs-rise",
+   "title": "Nursing Home Room Costs Increase by 7% to 9% as all Long-Term Care Costs Rise",
+   "kind": "irrelevant",
+   "content_hash": "a7b1f44924815b8d1c32732f63d8b48c1a389fa646a64d98fd09fff24454c695",
+   "text": "",
+   "excerpt": "The cost of a room in a nursing home rose between 2023 and 2024, with semi-private rooms seeing a 7% increase to $111,325, and private rooms a 9% jump in cost to $127,750.\n\nThese cost of care increases for the sector fall somewhere in the middle compared to other long-term care settings, according t",
+   "label_note": "",
+   "expected": {
+    "property_name": "NOT FOUND",
+    "street": "NOT FOUND",
+    "city": "NOT FOUND",
+    "state": "NOT FOUND",
+    "units": "NOT FOUND",
+    "beds": "NOT FOUND",
+    "care_type": "NOT FOUND",
+    "distress_type": "NOT FOUND",
+    "stage_text": "NOT FOUND",
+    "debtor_or_owner": "NOT FOUND",
+    "receiver_or_trustee": "NOT FOUND",
+    "buyer_or_new_operator": "NOT FOUND",
+    "lender": "NOT FOUND",
+    "event_dates": "NOT FOUND",
+    "amounts": "NOT FOUND"
+   }
+  }
+ ],
+ "text_note": "Full article text is not stored in this public repo (copyright). The eval reads it from raw.document by doc_id; a local full-text copy lives in eval/private/ (gitignored)."
+}

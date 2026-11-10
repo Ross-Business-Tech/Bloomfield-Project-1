@@ -1,0 +1,55 @@
+# Daily CourtListener sale-process check for recent bankruptcy families (src/discover/courts/sale_check.py).
+# Runs on the repo's default branch (development) once a day, and on demand from the Actions tab.
+#
+# Needs TWO repository secrets (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL      Supabase "Session pooler" connection string (GitHub runners have no IPv6).
+#   COURTLISTENER_TOKEN  CourtListener API token.
+#
+# CourtListener budget: this account allows 5 requests/min, 50/hour and 125 per rolling 24 hours.
+# This job spends AT MOST 15 requests per rolling 24 h (hard cap in sale_check.py, counted from core.sale_check),
+# so >= 110 are always left for the case-list download (python -m src.discover.courts --source courtlistener
+# --search-only). Do NOT schedule that download in the same hour as this job: both share the 50/hour limit.
+# A 429 from CourtListener stops the run immediately (no retry); the rest waits for tomorrow.
+name: courtlistener-daily
+
+on:
+  schedule:
+    - cron: "43 13 * * *"   # 13:43 UTC = 8:43 am Eastern (2.5 h after news-daily at 11:17 UTC; off the hour)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: courtlistener-daily
+  cancel-in-progress: false
+
+jobs:
+  sale-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Check sale processes on CourtListener (max 15 families)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          COURTLISTENER_TOKEN: ${{ secrets.COURTLISTENER_TOKEN }}
+        run: |
+          missing=0
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is not set (Settings > Secrets and variables > Actions)."
+            missing=1
+          fi
+          if [ -z "$COURTLISTENER_TOKEN" ]; then
+            echo "::error::Repository secret COURTLISTENER_TOKEN is not set (Settings > Secrets and variables > Actions)."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          python -m src.discover.courts.sale_check --channel courtlistener --max-families 15

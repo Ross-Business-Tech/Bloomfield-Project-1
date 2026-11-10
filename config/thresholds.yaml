@@ -1,0 +1,110 @@
+# Every number here is an ASSUMPTION until Bloomfield confirms it (README §6, §13).
+# Signal rules, matching and scoring read from this file. Change numbers here, never in code.
+
+signals:            # docs/BUILD_SPEC.md step 5
+  low_occupancy:
+    occupancy_below: 0.70          # assumption
+  negative_noi:
+    net_income_below: 0            # assumption
+  staffing_drop:
+    census_drop_pct: 0.15          # assumption: avg census down >15% ...
+    over_quarters: 4               # ... over 4 quarters
+  operator_turnover:
+    min_changes: 2                 # assumption: >=2 CHOW / licensee changes ...
+    within_months: 36              # ... within 36 months
+    two_medicare_numbers: true     # Gate 2 decision: one building with 2 CCNs (merged duplicate) = operator turnover
+  retention:                       # Gate 2 decision (database space)
+    metric_signals: latest_only    # low_occupancy, negative_noi, staffing_drop, sff_or_candidate, dscr_*: keep latest value per facility
+    event_signals: full_history    # operator_turnover, chapter_11, receivership, foreclosure, deed_in_lieu, hud_loan_terminated, warn_closure, ...
+    drop_raw_cms_owner_list_above_mb: 400   # only then drop stg.cms_snf_owner (its useful rows already live in core.facility_role)
+  dscr_below_1:
+    dscr_below: 1.0                # README signal 1
+  maturity_12m_low_dscr:
+    months_to_maturity: 12         # README signal 2
+    dscr_below: 1.2
+
+stage_of_signal:    # README §5 distress timeline
+  low_occupancy: early
+  negative_noi: early
+  staffing_drop: early
+  delayed_opening: early
+  mechanics_lien: early
+  operator_turnover: early
+  sff_or_candidate: early
+  warn_closure: middle
+  dscr_below_1: middle
+  maturity_12m_low_dscr: middle
+  bridge_on_bridge: middle
+  hud_loan_terminated: middle
+  chapter_11: late
+  receivership: late
+  foreclosure: late
+  deed_in_lieu: late
+  hud_delinquency: middle          # Wave 3.5 (licensed loan facts): assumption
+  special_servicing: middle        # Wave 3.5: assumption
+  maturity_default: middle         # Wave 3.5: assumption
+  lender_takeback: late            # Wave 3.5 decision: REO = late
+  closure: late                    # Gate 3 decision (was middle); a lender takeback (REO / sheriff's sale) also stays late, not sale
+  price_collapse: sale
+
+matching:           # docs/BUILD_SPEC.md step 3
+  weights:
+    name_token_set: 0.35
+    street_token_sort: 0.45
+  street_number_equal_bonus: 20
+  street_number_differ_penalty: 25
+  phone_equal_bonus: 10
+  auto_match_at_or_above: 90
+  needs_review_at_or_above: 75     # 75-89 = needs_review, below = new facility
+  unconfirmed_lead_label: true     # Gate 2 decision: a lead that rests on a 75-89 (needs_review) link is labeled "unconfirmed"
+  hud:                             # Gate 2 decisions for HUD loans (no street in the HUD file)
+    strip_borrower_prefix: true    # text before the first "-" (e.g. "NEXCARE-", "TLMGT30-") is a borrower code, not the name
+    auto_requires_exact_zip: true
+    require_care_type_match: true  # assisted living vs nursing home must agree
+
+scoring:            # docs/BUILD_SPEC.md step 7
+  stage_weight: { sale: 40, late: 30, middle: 20, early: 10 }
+  # Wave 3 assumptions (moved here from src/score/rules.py WAVE3_DEFAULTS)
+  stage_of_new_signals: { chapter_7: late, loan_or_lease_default: middle, closure: late, court_sale_process: sale, market_sale: sale }
+  market_sale_bonus: 5               # Gate 2 decision: broker sale = low weight, never creates a lead
+  court_sale_priority: 100           # Gate 2 decision: court sale processes go to the top
+  debtor_org_link_weight: 0.5        # case linked via the parent/debtor org, not the facility name
+  senior_housing_maybe_weight: 0.5   # bankruptcy family only 'maybe' senior housing
+  family_top_n: 3                    # per bankruptcy family, only the best 3 leads keep full family points ...
+  family_overflow_weight: 0.1        # ... the rest keep 10% (flag family_capped)
+  lead_window_months: 36             # Gate 1/2 decision: older events are context only
+  occupancy_max_plausible: 1.0       # cost-report occupancy above 100% = data error
+  early_main_min_signals: 3          # Gate 3: main list = >= 3 different distress signals OR one hard event (below); others -> watch list (CSV only)
+  hard_events: [chapter_11, chapter_7, receivership, foreclosure, deed_in_lieu, closure, warn_closure, hud_loan_terminated,
+                loan_or_lease_default, court_sale_process, mechanics_lien, price_collapse,
+                hud_delinquency, special_servicing, lender_takeback, maturity_default]   # Wave 3.5 decision (maturity_default = a loan default: assumption)   # assumption: SFF status, delayed opening and cost-report metrics are not hard events
+  buyer_undated_weight: 0.5         # Gate 3: a named buyer with no sale-order / CMS ownership-change date = 'named (undated)', half the buyer points (assumption)
+  buyer_named_max_months: 24         # Gate 3: a buyer is 'named' only if the ownership change is <= 24 months old; older -> 'stale', 0 buyer points
+  closed_sale_penalty:               # Gate 3: a sale-stage lead whose sale closed long ago is old news
+    after_months: 12
+    points: 60                       # assumption: minus 60 AND the court-sale priority is taken back (the sale is over)
+  buyer_type_weight:                 # Gate 3: share of buyer / chain / HUD points by buyer type (types: config/buyer_orgs.yaml or name rules)
+    operator: 1.0
+    PE/investor: 1.0
+    public company: 0.4              # assumption: "low"
+    REIT: 0.4                        # assumption: "low"
+    hospital/public: 0.0
+    lender: 0.0
+  deal_size:                         # Gate 3: a deal is sized by the total units (else beds) of all its homes, same 40-250 band as size_fit
+    too_big_factor: 2                # assumption: a deal above 2x the band's top (500 units/beds, ~2x $30M) is "far above $30M" ...
+    keep_out_of_top: 20              # ... and never ranks in the top 20 deals
+  court_name_only:                   # Gate 3 top-5 check: 3 of 5 court links made by facility name alone were wrong
+    score_cap: 60                    # assumption: a lead whose court link is name-only (no petition / claims-agent address, CCN or CMS-operator match) scores at most this ...
+    keep_out_of_top: 50              # ... and never ranks in the top 50 of the main list; it also keeps the 'unconfirmed' flag
+  recency:                         # assumption: points by months since the latest signal
+    max_points: 15
+    full_points_within_months: 3
+    zero_points_after_months: 24
+  buyer_named_bonus: 20
+  buyer_candidate_bonus: 8         # assumption
+  buyer_chain_quality_max: 10      # assumption: scaled from CMS chain performance
+  size_fit:                        # units/beds as a proxy for a $3-30M loan (assumption)
+    min_units: 40
+    max_units: 250
+    points: 10
+  hud_exit_bonus: 10               # buyer has prior Section 232 loans
