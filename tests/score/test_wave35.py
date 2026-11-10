@@ -115,3 +115,21 @@ def test_name_only_court_leads_stay_out_of_the_public_top(monkeypatch):
     lic_name_only = mk(95, ["court_name_only", "licensed_private"], pub=75)
     n = leads.keep_name_only_out_of_public_top([hidden, *conf, name_only, lic_name_only])
     assert n == 2 and name_only.score == 69.99 and lic_name_only.breakdown["public"]["score"] == 69.99
+
+
+def test_debtor_is_never_its_own_buyer_and_brand_twins_are_flagged():
+    from src.score.buyers import BuyerResolver
+    from src.score.signals import BuyerHint
+    br = BuyerResolver.__new__(BuyerResolver)
+    br.fac_families = {"f1": {7}}
+    br.family_debtors = {7: {"Acme Healthcare Capital Holdings, LLC", "Acme Senior Living of Springfield DST",
+                             "300 Main Street OpCo LLC"}}
+    assert br.debtor_relation("f1", "ACME HEALTHCARE CAPITAL HOLDINGS LLC") == "debtor"
+    assert br.debtor_relation("f1", "Acme Senior Living of Springfield MT, LLC") == "debtor"   # trust vs master tenant
+    assert br.debtor_relation("f1", "Acme Florida Acquisitions LLC") == "insider"
+    assert br.debtor_relation("f1", "101 Main Street Holdings, LLC") is None                 # address names: no brand
+    assert br.debtor_relation("f1", "Other Senior Living LLC") is None
+    assert br.debtor_relation("f2", "Acme Healthcare Capital Holdings, LLC") is None         # not this home's case
+    b = BuyerResolver.resolve(br, "f1", [BuyerHint("f1", "ACME HEALTHCARE CAPITAL HOLDINGS LLC", "named", "https://x",
+                                                   "license_change")])
+    assert b.status == "NOT FOUND" and b.dropped_debtor

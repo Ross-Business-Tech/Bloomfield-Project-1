@@ -147,6 +147,10 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("buyer_chain_perf_missing")
     if hospital_buyer:
         flags.append("buyer_hospital_district")
+    if buyer.status != "NOT FOUND" and buyer.possible_insider:
+        flags.append("buyer_possible_insider")    # same brand as the debtor (inferred)
+    if buyer.dropped_debtor:
+        breakdown["buyer_dropped_debtor"] = buyer.dropped_debtor   # named the debtor / its affiliate: never a buyer
     # Wave 3.5 deliverable rule: licensed (private) facts never reach Bloomfield-facing output.
     #   licensed_only    = no distress signal from a public source -> excluded from app.v_lead_list
     #   licensed_private = some licensed content -> public view masks it (public distress types, buyer NOT FOUND

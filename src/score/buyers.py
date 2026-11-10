@@ -40,6 +40,8 @@ class Buyer:
     type_source: str | None = None     # 'confirmed' (source / CMS flag) or 'inferred' (from the name)
     date_basis: str | None = None      # 'source' / 'sale_order' / 'cms_chow' / None (undated)
     entity: str | None = None          # the shell / subsidiary that actually signed, when a parent is shown
+    possible_insider: bool = False     # same brand as the bankrupt debtor (e.g. '<Debtor brand> Acquisitions LLC'): inferred
+    dropped_debtor: list[str] = field(default_factory=list)   # hints dropped because they name the debtor itself
 
 
 def pick(hints: list[BuyerHint]) -> BuyerHint | None:
@@ -87,6 +89,14 @@ class BuyerResolver:
                               "join core.organization o on o.org_id = e.buyer_org_id where e.event_type in "
                               "('chow','license_change') and e.effective_date is not null group by 1, 2").fetchall():
             self.last_chow[(r["facility_id"], normalize_name(r["name"]))] = r["d"]
+        # bankruptcy family -> every debtor name in it (the family name + each member case's debtor / case name)
+        self.family_debtors: dict[int, set] = {}
+        for r in conn.execute("select f.family_id, f.family_name n from core.case_family f union all "
+                              "select m.family_id, coalesce(sc.debtor_name, sc.case_name) from core.case_family_member m "
+                              "join stg.court_case sc on sc.id = m.stg_court_case_id").fetchall():
+            if r["n"]:
+                self.family_debtors.setdefault(r["family_id"], set()).add(r["n"])
+        self.fac_families: dict[str, set] = {}      # set by the caller from the facility's legal signals
         self.known = {}
         for x in rules.buyer_orgs():
             for n in [x["name"]] + list(x.get("aliases") or []):
@@ -156,11 +166,33 @@ class BuyerResolver:
         ds = [d for d in ds if d]
         return max(ds) if ds else None
 
+    def debtor_relation(self, facility_id: str, name: str) -> str | None:
+        """'debtor' when `name` is a debtor in this home's bankruptcy (same party, or the same entity under its trust /
+        master-tenant name); 'insider' when it only shares the debtor's brand ('<Brand> Florida Acquisitions LLC');
+        else None. A debtor is never its own home's buyer (Wave 4 decision)."""
+        from src.common.normalize import entity_stem
+        from src.enrich.steps import same_party
+        rel = None
+        for fam in self.fac_families.get(facility_id, ()):
+            for d in self.family_debtors.get(fam, ()):
+                if same_party(name, d) or (len(entity_stem(d).split()) >= 3 and entity_stem(name) == entity_stem(d)):
+                    return "debtor"
+                # brand check only between real brand names: an address-named entity ('101 W. State Street
+                # Holdings', '300 Pearl Street OpCo') carries street words, not a brand
+                if re.match(r"\s*\d", name) or re.match(r"\s*\d", d):
+                    continue
+                bw, dw = rules.brand_words(name), rules.brand_words(d)
+                if bw and dw and bw[0] == dw[0] and len(bw[0]) >= 4:
+                    rel = "insider"
+        return rel
+
     def resolve(self, facility_id: str, hints: list[BuyerHint], facility_name: str | None = None,
                 today: date | None = None) -> Buyer:
+        dropped = [x.name for x in hints if self.debtor_relation(facility_id, x.name) == "debtor"]
+        hints = [x for x in hints if x.name not in dropped]
         h = pick(hints)
         if h is None:
-            return Buyer()
+            return Buyer(dropped_debtor=sorted(set(dropped)))
         org_id, chain_id = self.org_for(h.name, h.org_id)
         chain = self.chains.get(chain_id) if chain_id else None
         prior_hud = bool(org_id and (self.org_facs.get(org_id, set()) - {facility_id}) & self.hud_facs)
@@ -169,6 +201,8 @@ class BuyerResolver:
                   {k: (float(v) if hasattr(v, "is_finite") else (str(v) if k == "report_date" else v))
                    for k, v in chain.items()} if chain else None,
                   prior_hud, h.family_id, alts, h.event_date, h.parent, "source" if h.parent else None)
+        b.dropped_debtor = sorted(set(dropped))
+        b.possible_insider = self.debtor_relation(facility_id, h.name) == "insider"
         first = h.name.split(";")[0].strip()          # joint buyers "A; B": type / parent from the first named
         known = self.known.get(normalize_name(first))
         if not b.parent and known and known.get("parent"):

@@ -64,6 +64,10 @@ def run_score(conn, sigs, hints, fids, today, prune) -> dict:
         if f and f["units"] is None and f["beds"] is None:
             f["units"], f["size_licensed"] = int(r["units"]), True
     resolver = BuyerResolver(conn)
+    for fid, ss in by_fac.items():             # bankruptcy families per home (a debtor is never its own buyer)
+        fams = {x.family_id for x in ss if x.family_id is not None}
+        if fams:
+            resolver.fac_families[fid] = fams
     buyers = {fid: resolver.resolve(fid, hint_by_fac.get(fid, []), facs[fid]["canonical_name"], today)
               for fid in by_fac}
     ranked = leads.score_all(facs, by_fac, buyers, today)
