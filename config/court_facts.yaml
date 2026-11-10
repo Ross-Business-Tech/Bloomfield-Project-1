@@ -1,0 +1,67 @@
+# Hand-checked court facts (Gate 3 top-5 check, Nov 10, 2026). Read by src/score/signals.py.
+# Every entry needs a public source_url. Public court / CMS facts only; nothing confidential goes here.
+#
+# links: extra bankruptcy case -> facility links, confirmed by an address or CCN source.
+#   case:          court:docket as in core.legal_case (e.g. pawb:26-22481)
+#   ccn:           the facility's CMS CCN
+#   confirmed_by:  petition | claims_agent | cms_operator | human
+links:
+  # Rochester Manor OpCo (W.D. Pa. 26-22481) is jointly administered with Armstrong SNF Operators LLC and
+  # Spring Hill SNF Operator LLC (debtor list on ElevenFlo). CMS enrollment lists those exact legal names as the
+  # operators of these two Pollak homes.
+  - case: "pawb:26-22481"
+    ccn: "395471"            # Armstrong Rehabilitation and Nursing Center, 265 S McKean St, Kittanning PA
+    confirmed_by: cms_operator
+    source_url: https://elevenflo.com/blog/rochester-manor-opco-llc-19234-3
+  - case: "pawb:26-22481"
+    ccn: "395666"            # Spring Hill Rehabilitation and Nursing Center, 2170 Rhine St, Pittsburgh PA
+    confirmed_by: cms_operator
+    source_url: https://elevenflo.com/blog/rochester-manor-opco-llc-19234-3
+
+# sales: hand-checked sale facts that beat the machine-read ones.
+#   stage_text: one of sale motion | bidding procedures | stalking horse | auction | sale order | sale closed
+#   sale_hearing (optional), buyers (optional): [{ccn, name}] -> buyer_status from the stage (stalking horse = candidate)
+sales:
+  # Rochester Manor OpCo et al. (W.D. Pa. 26-22481): the sale motion was withdrawn and bidding procedures vacated
+  # (Dkt. 251); on Nov 5, 2026 the court entered a Settlement and Transfer Order (Dkt. 291): $790,000 settlement and
+  # operations transfer to Focus Health Network-connected operators, closing milestone Nov 13 (Dkt. 258).
+  # The four stalking-horse entities are dropped (sale withdrawn; facility mapping was guessed from names).
+  - case: "pawb:26-22481"
+    stage_text: sale order
+    event_date: 2026-11-05
+    evidence_text: "Nov 5, 2026 Settlement and Transfer Order (Dkt. 291): $790,000 settlement and operations transfer to Focus Health Network-connected operators (unnamed); sale motion withdrawn (Dkt. 251). Source: ElevenFlo docket summary, not verified against the order."
+    source_url: https://elevenflo.com/cases/rochester-manor-opco-llc-19234
+    buyer_all_homes: "Focus Health Network-connected operators (unnamed)"
+    buyer_status: candidate          # transferees are not named in anything we could read
+
+# buyers: hand-checked buyer for one facility (by CCN, or by `case` for a hand-entered facility below).
+#   status: named | candidate; event_date: when the deal was reported; parent: only with proof in the source
+buyers:
+  - ccn: "676111"                   # The Buckingham, 8580 Woodway Dr, Houston (CMS name: FFIII HOUSTON SNF TENANT LLC; operator Buckingham Senior Living Community Inc)
+    name: "Focus SH Acquisitions LLC"
+    status: named
+    parent: "Focus Healthcare Partners"   # article: bid "by Focus Healthcare Partners through Focus SH Acquisitions LLC"
+    event_date: 2026-01-30
+    evidence_text: "Judge approved Focus Healthcare Partners' bid through Focus SH Acquisitions LLC: $116.4M cash, $133M total gross consideration, 495-unit CCRC (Levin Associates, Jan 30, 2026)."
+    source_url: https://seniorcare.levinassociates.com/2026/01/30/focus-healthcare-partners-acquires-bankrupt-ccrc/
+
+# facilities: buildings no loader has (no CMS number), tied to a bankruptcy case by a hand check.
+#   Created by `python -m src.enrich --step manual`; only facts the source states. Check CMS by address first:
+#   The Buckingham turned out to be in CMS already (CCN 676111), so it is not listed here.
+#   An existing building with the same name, city and state is reused (no duplicate).
+facilities:
+  # Premium Edge, LLC (M.D. Fla. 6:26-bk-04017, Ch. 11 filed May 29, 2026) does business as Alura Senior Living,
+  # 777 Roy Wall Blvd, Rockledge FL, and owns and operates it (Bondoro filing alert; CourtListener docket).
+  - case: "flmb:26-04017"
+    name: "Alura Senior Living"
+    city: "Rockledge"
+    state: "FL"
+    care_types: [IL, AL, MC]
+    source_id: courtlistener
+    source_url: https://bondoro.com/alura-senior-living-filing-alert/
+
+# excluded_sale_evidence: machine-found sale evidence that belongs to a different case.
+excluded_sale_evidence:
+  - case: "mieb:25-43883"    # Mission Point of Detroit, LLC (Ch. 11)
+    source_url: https://skillednursingnews.com/2025/11/skilled-nursing-dealbook-mission-point-operations-sold-for-10-plus-liabilities-cfg-closes-350-9m-in-sales
+    reason: the $10-plus-liabilities sale was of the receivership facilities, not the Detroit Chapter 11

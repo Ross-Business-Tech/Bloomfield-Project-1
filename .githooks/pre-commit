@@ -1,0 +1,3 @@
+#!/bin/sh
+# Leak guard (see tools/leak_guard.py). Turn on once per clone: git config core.hooksPath .githooks
+exec python3 "$(git rev-parse --show-toplevel)/tools/leak_guard.py" --staged

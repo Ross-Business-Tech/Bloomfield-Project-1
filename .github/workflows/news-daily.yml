@@ -1,0 +1,43 @@
+# Daily news collector for the Bloomfield pipeline (src/discover/news).
+# Runs on the repo's default branch (development) every morning, and on demand from the Actions tab.
+#
+# Needs ONE repository secret: SUPABASE_DB_URL
+#   Use Supabase's "Session pooler" connection string (Connect > Session pooler): GitHub runners have no
+#   IPv6, so the direct db.<ref>.supabase.co address will not connect.
+# The job only reads public news feeds and writes to raw.document; it never touches the website deploy.
+name: news-daily
+
+on:
+  schedule:
+    - cron: "17 11 * * *"   # 11:17 UTC = 6:17 am Eastern (off the hour to avoid GitHub's busiest minute)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: news-daily
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Collect news
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is not set (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          python -m src.discover.news

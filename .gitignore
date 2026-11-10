@@ -34,3 +34,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- Bloomfield pipeline (Python) ---
+# Secrets and confidential files: never commit
+.env
+!.env.example
+eval/private/
+*_PRIVATE*
+data/raw/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+
+# lead exports (Bloomfield working data; never in the public repo)
+output/
