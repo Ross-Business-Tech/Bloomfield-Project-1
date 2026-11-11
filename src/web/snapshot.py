@@ -302,7 +302,7 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
          "rule": "Main-list leads whose evidence is public, each with its source links."},
         {"step": "List A", "count": c["list_a"], "rule": "Live deal with a buyer named in a source.", "list": "A"},
         {"step": "List B", "count": c["list_b"], "rule": "Distress before any sale; no buyer found yet.", "list": "B"},
-        {"step": "List C", "count": c["list_c"], "rule": "Buyers named on 2+ homes in the list.", "list": "C"},
+        {"step": "List C", "count": c["list_c"], "rule": "Firms with 2+ acquisitions in 36 months (CMS ownership changes, state licence changes, court sales, news), each with a public link.", "list": "C"},
     ]
 
 
@@ -361,6 +361,11 @@ def main(argv=None) -> int:
         explore = watch_rows(skip_names)
         snap["explore"] = explore
         snap["counts"]["explore"] = len(explore)
+        from src.score import list_c as list_c_public
+        c_rows, _ = list_c_public.build(conn)
+        snap["list_c"] = [{k: r[k] for k in ("list", "rank", "buyer", "buyer_type", "acquisitions_36mo", "homes_in_list",
+                                             "latest_date", "example_homes", "public_source_link")} for r in c_rows]
+        snap["counts"]["list_c"] = len(snap["list_c"])
         snap["funnel"] = funnel(conn, snap, len(explore))
         snap["sources_table"] = source_rows(conn)
         snap["rules"] = rules_block()

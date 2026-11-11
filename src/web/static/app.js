@@ -408,7 +408,7 @@
   const C_COLS = [
     { key: "rank", label: "#", sort: (c) => c.rank },
     { key: "buyer", label: "Buyer", sort: (c) => c.buyer },
-    { key: "homes", label: "Homes in list", sort: (c) => c.homes_in_list, num: true },
+    { key: "homes", label: "Homes acquired (36 mo)", sort: (c) => c.homes_in_list, num: true },
     { key: "examples", label: "Example homes" },
     { key: "source", label: "Source" },
   ];

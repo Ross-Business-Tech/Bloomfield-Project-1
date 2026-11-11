@@ -135,13 +135,15 @@ def main() -> int:
         leads = public_leads(conn)
         skip_names = {r["canonical_name"] for r in conn.execute(
             "select canonical_name from core.facility where facility_id = any(%s::uuid[])", (list(excluded()),)).fetchall()}
-        a, b, c = list_a(leads), list_b(leads), list_c(skip_names)
+        from src.score import list_c as list_c_public
+        a, b = list_a(leads), list_b(leads)
+        c, _ = list_c_public.build(conn)          # Nov 11: public-only repeat buyers (36 months, 2+ acquisitions)
         top = [dict(lead_row(r, "top20"), **{k: "" for k in CHECK_COLS}) for r in leads[:20]]
         nums = numbers(conn, leads, a, b, c)
     write("list_A_live_deals.csv", a, LEAD_COLS)
     write("list_B_presale_distress.csv", b, LEAD_COLS)
-    write("list_C_repeat_buyers.csv", c, ["list", "rank", "firm", "repeat_deals_24mo", "al_takeover_homes_24mo",
-                                          "example_homes", "public_source_link", "not_found"])
+    from src.score.list_c import COLS as C_COLS
+    write("list_C_repeat_buyers.csv", c, C_COLS)
     write("top_20_for_handcheck.csv", top, LEAD_COLS + CHECK_COLS)
     print({**nums, "date": str(date.today())})
     return 0
