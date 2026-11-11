@@ -102,6 +102,38 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
                                           and best.stage == "sale") else 0.0
     if closed_pts:
         closed_pts -= court_pts            # a sale that closed long ago is no longer an open court sale either
+    # Nov 11 hand check: a sale a court approved, or that a public source reports closed, is no longer "in a sale".
+    # Public sources only (a licensed tag never sets it); a hand-check override wins; closed beats approved.
+    ov = fac.get("override") or {}
+    sale = ov.get("sale_status")
+    if not sale:
+        done = [s for s in current if s.sale_status and str(s.source_url).startswith(("http://", "https://"))]
+        if done:
+            top = max(done, key=lambda s: (s.sale_status == "closed", s.sale_date.toordinal() if s.sale_date else 0))
+            when = top.sale_date.isoformat() if top.sale_date else None
+            sale = {"status": top.sale_status, "date": when[:7] if when and top.sale_month_only else when,
+                    "source_url": top.source_url, "basis": "court" if top.category == "legal" else "news report"}
+            if top.sale_portfolio:
+                sale["portfolio"] = True          # portfolio-level fact, not checked for this home
+    sale_day = rules.stated_date(sale["date"] if len(str(sale["date"])) > 7 else str(sale["date"]) + "-28") \
+        if sale and sale.get("date") else None
+    sale_old = bool(sale and sale["status"] == "closed" and sale_day
+                    and rules.months_between(sale_day, today) > pen["after_months"])
+    if sale and sale["status"] == "closed":
+        # Nov 11 decision: the stage never RAISES a score. "Sale approved" scores like "In a sale"; "Closed / sold"
+        # scores like "Late stage" at most (post-sale turnaround window) and is no longer an open court sale, so
+        # live deals rank above closed ones. A home whose best stage was lower keeps its old stage score.
+        late = float(sc["stage_weight"]["late"])
+        # A portfolio-wide closing is not checked for this home: its case signals count at the family overflow
+        # weight for every home (no home gets the case's full points from an inferred stage).
+        inferred = bool(sale.get("portfolio"))
+        best_pts = max(min(pts(s), late * s.weight * (min(factor(s), overflow) if inferred and s.family_id is not None
+                                                      else factor(s))) for s in current)
+        if closed_pts:
+            closed_pts += court_pts                        # the court-sale priority is taken back once, below
+        court_pts = 0.0
+    if sale_old and not closed_pts:
+        closed_pts = -float(pen["points"])                 # same rule as a buyer-dated closing: old news for a lender
     market = [s for s in sigs if s.signal_type == "market_sale" and rules.in_lead_window(s, today)]
     market_pts = float(rules.wave3("market_sale_bonus")) if market else 0.0
     breakdown = {
@@ -120,6 +152,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         "closed_sale_penalty": closed_pts,
     }
     total = round(sum(v for k, v in breakdown.items() if isinstance(v, (int, float))), 2)
+    if sale:
+        breakdown["sale_status"] = sale
     # Gate 3 top-5 check: a bankruptcy link resting on the facility NAME alone (no address / CCN / CMS-operator
     # confirmation) is capped; score_all also keeps it out of the top N.
     name_only = any("court_name_only" in s.flags for s in current if s.family_id is not None)
@@ -145,8 +179,15 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
             (buyer.status != "NOT FOUND" and buyer.link_status == "needs_review"):
         if rules.cfg()["matching"].get("unconfirmed_lead_label", True):
             flags.append("unconfirmed")
-    if closed_pts:
+    if closed_pts or sale_old:
         flags.append("sale_closed_over_12m")
+    if sale:
+        flags.append("sale_" + sale["status"])
+        if sale.get("portfolio"):
+            flags.append("portfolio_sale_inferred")
+    for f in ov.get("flags") or []:
+        if f not in flags:
+            flags.append(f)
     if buyer.status in ("shell", "stale"):
         flags.append(f"buyer_{buyer.status}")
     if buyer.status == "NOT FOUND":
@@ -197,7 +238,7 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     for f in ("senior_housing_maybe", "portfolio_link"):
         if f in best.flags:
             flags.append(f)
-    for f in ("borrower_name_mismatch", "address_unconfirmed"):   # evidence-level flags from hand-checked public events
+    for f in ("borrower_name_mismatch", "address_unconfirmed", "former_operator_suspect"):   # evidence-level flags from hand-checked public events
         if any(f in s.flags for s in current) and f not in flags:
             flags.append(f)
     if (fac.get("beds") or 0) > 300 and "senior_housing_maybe" in flags:

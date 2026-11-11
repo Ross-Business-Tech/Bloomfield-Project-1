@@ -45,6 +45,18 @@ sales:
     buyer_all_homes: "Focus-affiliated operators (unnamed)"
     buyer_status: candidate          # transferees are not named in anything we could read
 
+  # Genesis HealthCare (N.D. Tex. 25-80185): the court approved the portfolio sale in January 2026 and the sale of
+  # substantially all operating assets closed Oct 14, 2026 (MyChesco). The source does not list the homes transferred,
+  # so every home gets the PORTFOLIO stage with the flag portfolio_sale_inferred (no score gain from it).
+  - case: "txnb:25-80185"
+    stage_text: sale closed
+    event_date: 2026-10-14
+    portfolio: true
+    evidence_text: "Sale of substantially all operating assets to 101 W. State Street Holdings, LLC closed Oct 14, 2026 (MyChesco); the number and names of the homes transferred are not disclosed. Portfolio-level fact, not checked per home."
+    source_url: https://www.mychesco.com/a/news/business/genesis-healthcare-exits-chapter-11-after-asset-sale/
+    buyer_all_homes: "101 W. State Street Holdings, LLC"
+    buyer_status: named
+
 # buyers: hand-checked buyer for one facility (by CCN, or by `case` for a hand-entered facility below).
 #   status: named | candidate; event_date: when the deal was reported; parent: only with proof in the source
 buyers:

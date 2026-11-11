@@ -63,6 +63,11 @@ def run_score(conn, sigs, hints, fids, today, prune) -> dict:
         f = facs.get(r["fid"])
         if f and f["units"] is None and f["beds"] is None:
             f["units"], f["size_licensed"] = int(r["units"]), True
+    from . import overrides
+    for fid, extra in overrides.FAC.items():       # hand-check overrides: sale status + flags (public facts only)
+        if fid in facs:
+            facs[fid]["override"] = extra
+            pub_facs[fid] = dict(pub_facs[fid], override=extra)
     resolver = BuyerResolver(conn)
     for fid, ss in by_fac.items():             # bankruptcy families per home (a debtor is never its own buyer)
         fams = {x.family_id for x in ss if x.family_id is not None}

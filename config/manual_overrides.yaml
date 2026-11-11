@@ -1,0 +1,119 @@
+# Hand-check overrides (Nov 11, 2026 review of the top 20). Read by src/score/overrides.py.
+# Every entry: match (ccn, or name + city + state), a PUBLIC source_url and a date. Nothing is guessed: a fact
+# without a public link stays NOT FOUND. Fields: see the module docstring.
+overrides:
+  # ── Inspired Healthcare Capital (N.D. Tex. 26-90004): sale orders entered Oct 13, 2026; closings not verified ──
+  - match: {name: "MARIELLA SENIOR LIVING OF GRAPEVINE", city: "GRAPEVINE", state: "TX"}
+    source_url: https://www.iorio.law/blog/ihc-bankruptcy-update-dst-sale-proceeds-recoveries/
+    date: 2026-10-13
+    note: "Sonida was named successful bidder (Sep 21 filing) and the sale order followed on Oct 13, 2026; closing not verified as of Nov 4."
+    buyer: {name: "Sonida Acquisition LLC", status: named, role: "court approved purchaser"}
+    extra_links:                    # secondary buyer source: the stalking-horse notice that names Grapevine
+      - https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+    sale_status: approved
+    flags: [closing_unverified]
+    replace_links:
+      "https://www.courtlistener.com/docket/72222785/": https://dm.epiq11.com/case/IHC/info
+  - match: {name: "Mariella of Lake Orion", city: "Lake Orion", state: "MI"}
+    source_url: https://document.epiq11.com/document/getdocumentbycode?docId=4621723&projectCode=IHC&source=DM
+    date: 2026-10-13
+    note: "The signed Oct 13, 2026 sale order names the successful purchaser for Lake Orion and Chesterfield; closing not verified."
+    buyer: {name: "Conscious Senior Living Management LLC", status: named, role: "court approved purchaser"}
+    sale_status: approved
+    flags: [closing_unverified]
+  - match: {name: "MARIELLA SENIOR LIVING OF TERAVISTA", city: "ROUND ROCK", state: "TX"}
+    source_url: https://document.epiq11.com/document/getdocumentbycode?docId=4621128&projectCode=IHC&source=DM
+    date: 2026-10-08
+    note: "Oct 8, 2026 notice of final sale order names the successful bidder (or an affiliate / designee) for Teravista and four other communities; sale orders entered Oct 13; closing not verified."
+    buyer: {name: "National Healthcare Properties Operating Partnership, L.P.", status: named, role: "court approved purchaser"}
+    sale_status: approved
+    sale_date: 2026-10-13
+    sale_source_url: https://www.iorio.law/blog/ihc-bankruptcy-update-dst-sale-proceeds-recoveries/
+    flags: [closing_unverified]
+    replace_links:
+      "https://www.courtlistener.com/docket/72222785/": https://dm.epiq11.com/case/IHC/info
+
+  # ── The Buckingham (Houston): judge approved the bid in Jan 2026; the sale closed May 1, 2026 ──
+  - match: {ccn: "676111"}
+    source_url: https://elevenflo.com/cases/buckingham-senior-living-community-inc-2658
+    date: 2026-05-01
+    note: "Liquidation plan (Dkt. 605) reports that the sale closed on May 1, 2026 (ElevenFlo case summary)."
+    sale_status: closed
+
+  # ── SpiriTrust Lutheran (M.D. Pa.): court authorized the sale to Concordia (Dkt. 258); closed Apr 30, 2026 (Dkt. 456) ──
+  - match: {ccn: "395647"}          # Gettysburg
+    source_url: https://elevenflo.com/cases/spiritrust-lutheran-2131
+    date: 2026-04-30
+    buyer: {name: "Concordia Lutheran Ministries", status: named}
+    sale_status: closed
+  - match: {ccn: "395612"}          # Sprenkle Drive, York
+    source_url: https://elevenflo.com/cases/spiritrust-lutheran-2131
+    date: 2026-04-30
+    buyer: {name: "Concordia Lutheran Ministries", status: named}
+    sale_status: closed
+  - match: {ccn: "396146"}          # Luther Ridge, Chambersburg
+    source_url: https://elevenflo.com/cases/spiritrust-lutheran-2131
+    date: 2026-04-30
+    buyer: {name: "Concordia Lutheran Ministries", status: named}
+    sale_status: closed
+
+  # ── Vermont: both homes left Genesis in 2024, before its July 2025 petition (CMS change of ownership) ──
+  - match: {ccn: "475027B"}         # Bennington Health & Rehab, now MissionCare at Bennington
+    source_url: https://www.missioncareatbennington.com/
+    date: 2024-09-12
+    note: "Joined iCare on Sep 12, 2024 (operator's site); CMS change of ownership to Bennington Care Center, LLC the same day."
+    drop_family: true
+    buyer: {name: "BENNINGTON CARE CENTER, LLC", status: named, parent: "iCare Health Network"}
+  - match: {ccn: "475025B"}         # Springfield Health & Rehab
+    source_url: https://springfieldhealth.com/about/
+    date: 2024-12-18
+    note: "Run by Allaire Health Services (operator's site); CMS change of ownership to 105 Chester Road Opco LLC on Dec 18, 2024."
+    drop_family: true
+    buyer: {name: "105 CHESTER ROAD OPCO LLC", status: named, parent: "Allaire Health Services"}
+
+  # ── roundup article: the buyer named there belongs to the deal above it (Cottages of Fox Lake) ──
+  - match: {name: "The Fountains of Hope", city: "Sarasota", state: "FL"}
+    source_url: https://seniorhousingnews.com/2026/09/16/senior-living-dealbook-senior-living-residences-partners-with-riverglade-capital-bwe-arranges-101m-loan
+    date: 2026-09-16
+    note: "Reported sold by the court-appointed receiver to an unnamed publicly traded owner-operator; the date is the report date."
+    buyer: NOT FOUND
+    sale_status: closed
+    flags: [sale_date_is_report_date]
+  - match: {name: "Marshall Pines", city: "Evans", state: "GA"}
+    source_url: https://seniorhousingnews.com/2026/10/16/senior-living-dealbook-1019-senior-living-expands-in-indian-seven-community-pennsylvania-portfolio-trades-hands#deal-6
+    date: 2026-10-16
+    note: "Receivership sale reported; buyer not named; the date is the report date."
+    sale_status: closed
+    flags: [sale_date_is_report_date]
+  - match: {ccn: "265688"}          # The Living Center, Marshall MO
+    source_url: https://www.healthcaretransactions.com/healthcare-transactions-group-advises-on-sale-of-john-fitzgibbon-memorial-hospitals-the-living-center-skilled-nursing-facility/
+    date: 2026-09-08
+    note: "Seller's adviser reports the Sep 8, 2026 closing."
+    sale_status: closed
+  - match: {ccn: "505401"}          # Arcadia Medical Resort of Parkside, Union Gap WA
+    source_url: https://skillednursingnews.com/2026/03/skilled-nursing-dealbook-welltower-affiliated-nursing-homes-sell-for-82-4m-multi-state-deal-secures-51-2m-in-financing
+    date: 2026-02-01
+    note: "Bankruptcy sale closed and operations transferred effective Feb 1, 2026; buyer not named."
+    sale_status: closed
+
+  # ── Woodbury Heights (Cold Spring Acquisition, S.D.N.Y.): operations transferred; real-estate buyer not verified ──
+  - match: {ccn: "335555"}
+    source_url: https://casedocs.omniagentsolutions.com/cmsvol2/pub_47534/a1907ed1-db7c-4059-9f07-5549d2708989_692.pdf
+    date: 2025-04-22
+    note: "May 2026 court filing: 378 Sywood LLC has operated the facility since Apr 22, 2025. Operating control only."
+    buyer: {name: "378 Sywood LLC", status: candidate, role: "operating transferee"}
+
+  # ── Toney Rest Home: the docket does not name the building; bankruptcy kept as unscored context ──
+  - match: {name: "Toney Rest Home", city: "Oxford", state: "NC"}
+    source_url: https://www.courtlistener.com/docket/74917661/ps-senior-living-llc/
+    date: 2026-11-11
+    note: "PS Senior Living LLC filed in Georgia on Oct 5, 2026; no petition or schedule read so far names Toney Rest Home (checked Nov 11, 2026)."
+    zero_signals: [chapter_11]
+    flags: [debtor_link_unverified]
+
+  # ── Artemis Living at Littleton: lender won the auction; title closing not verified ──
+  - match: {name: "ARTEMIS LIVING AT LITTLETON", city: "LITTLETON", state: "NH"}
+    source_url: https://moo92.com/credit-union-buys-littleton-senior-living-campus-for-13-5-million-in-auction/
+    date: 2026-10-29
+    note: "Lender was the winning bidder at the Oct 29, 2026 auction; no third-party buyer; title closing not verified."
+    flags: [closing_unverified]
