@@ -278,3 +278,8 @@ def test_public_event_needs_a_web_link_and_never_makes_a_buyer(monkeypatch):
                                                                          "source_url": "licensed:provider"}]})
     with pytest.raises(ValueError):
         signals.public_event_signals(conn=None)
+
+
+def test_case_loader_prefers_the_courtlistener_docket_link():
+    from src.discover.courts.loader import UPSERT
+    assert "courtlistener.com/docket/" in UPSERT and "source_url       = case when" in UPSERT

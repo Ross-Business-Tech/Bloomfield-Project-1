@@ -312,7 +312,8 @@ public_events:
     evidence_text: "Notice of Foreclosure Sale dated Sep 24, 2026: Service Federal Credit Union (d/b/a Service Credit Union), mortgagee, will sell 1262 Saint Johnsbury Road, Littleton NH (Lots 1 and 2) at public auction on Oct 29, 2026, under the mortgage given by Granite Senior Services, LLC (Jun 30, 2022)."
     source_url: https://paulmcinnis.com/media/ct1fviqr/notice-of-foreclosure-sale-lots-1-and-2.pdf
     lender: "Service Credit Union"
-    flags: [borrower_name_mismatch]   # notice: Granite Senior Services, LLC; news: Granite Senior Operations LLC
+    flags: [borrower_name_mismatch, address_unconfirmed]   # notice: Granite Senior Services, LLC; news: Granite Senior Operations LLC;
+                                      # no public source gives Artemis's street address to match 1262 Saint Johnsbury Rd
   - case: "nhb:26-10275"
     signal_type: lender_takeback
     event_date: 2026-10-29
@@ -320,14 +321,14 @@ public_events:
     source_url: https://moo92.com/credit-union-buys-littleton-senior-living-campus-for-13-5-million-in-auction/
     lender: "Service Credit Union"
     owner_after: "Service Credit Union (lender takeback)"
-    flags: [borrower_name_mismatch]
+    flags: [borrower_name_mismatch, address_unconfirmed]
   - case: "nhb:26-10275"
     signal_type: price_collapse
     event_date: 2026-10-29
     value: 0.47                       # $13.5M winning bid / $29M construction loan
     evidence_text: "Winning auction bid $13.5M against the $29M construction loan Service Credit Union made to Granite Senior Operations LLC (about 47% of the loan) (Moo92)."
     source_url: https://moo92.com/credit-union-buys-littleton-senior-living-campus-for-13-5-million-in-auction/
-    flags: [borrower_name_mismatch]
+    flags: [borrower_name_mismatch, address_unconfirmed]
 
 excluded_sale_evidence:
   - case: "mieb:25-43883"    # Mission Point of Detroit, LLC (Ch. 11)
