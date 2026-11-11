@@ -80,6 +80,10 @@ def main() -> int:
             for view in ("overview", "how", "explore"):
                 page.goto(base + "/#/" + view, wait_until="networkidle")
                 page.wait_for_selector(f"#view-{view}:not(.hidden)")
+                if view == "overview":                 # scroll the funnel into view so its count-up runs, then let it finish
+                    page.evaluate("document.querySelector('#funnel').scrollIntoView()")
+                    page.wait_for_timeout(2500)
+                    page.evaluate("window.scrollTo(0, 0)")
                 page.wait_for_timeout(300)
                 path = OUT / f"site_{name}_{view}.png"
                 page.screenshot(path=str(path), full_page=view != "explore")

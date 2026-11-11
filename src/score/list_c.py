@@ -139,6 +139,7 @@ def build(conn, today: date | None = None, months: int = 36, min_acq: int = 2) -
                     "public_source_link": deals[0]["url"],
                     "all_source_links": " | ".join(dict.fromkeys(d["url"] for d in deals)),
                     "origins": ", ".join(sorted(f["origins"]))})
+    stats["linked_facility_ids"] = sorted(set().union(*[set(f["homes"]) for f in rows])) if rows else []
     stats["firms_any"] = len(firms)
     stats["repeat_buyers"] = len(out)
     return out, dict(stats)

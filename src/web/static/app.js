@@ -25,7 +25,7 @@
     { key: "C", cls: "c", label: "List C · Repeat buyers" },
   ];
   const BD_LABELS = [["court_sale_priority", "Court sale priority"], ["stage", "Distress stage"], ["buyer", "Buyer"],
-    ["recency", "Recency"], ["size_fit", "Size fit ($3–30M)"], ["hud_exit", "HUD exit"], ["market_sale", "Market sale"],
+    ["recency", "Recency"], ["size_fit", "Size fit ($3–30M)"], ["care_type_fit", "Care-type fit (assumption)"], ["hud_exit", "HUD exit"], ["market_sale", "Market sale"],
     ["buyer_chain_quality", "Buyer chain quality"], ["closed_sale_penalty", "Closed-sale penalty"]];
   const PAGE_SIZE = 25;
 
@@ -125,6 +125,7 @@
         el("td", { class: "muted", text: r.refresh })))));
     const R = S.data.rules || {};
     const sw = R.stage_weight || {}, sf = R.size_fit || {}, rc = R.recency || {}, cp = R.closed_sale_penalty || {};
+    const ctf = R.care_type_fit || {}, dv = R.buyer_diversity || {};
     const rule = (title, ...body) => el("div", { class: "rule" }, el("h3", { text: title }), ...body);
     $("rules").replaceChildren(el("div", { class: "rules" },
       rule("Main list", el("p", { text: "A building makes the main list with " + (R.main_min_signals || 3) +
@@ -139,6 +140,10 @@
         " months old. The seller is never its own buyer, and a buyer with the seller's brand is flagged as a possible insider." })),
       rule("Deal size fit", el("p", { text: "Buildings with " + sf.min_units + "–" + sf.max_units + " units or beds (a proxy for a $3–30M loan) add " +
         sf.points + " points. Very large bankruptcies are shown as one deal; only their top " + R.family_top_n + " homes keep full points." })),
+      rule("Care-type fit (assumption)", el("p", { text: "Assisted living, independent living, memory care and CCRC buildings add " +
+        (ctf.points || 0) + " points. This weighting is an assumption still to be confirmed." })),
+      rule("Top 20 mix", el("p", { text: "To keep the top of each list varied, at most " + (dv.per_buyer || 2) + " leads of one buyer appear in its top " +
+        (dv.top_n || 20) + "; further leads of that buyer keep their score and are shown just below rank " + (dv.top_n || 20) + "." })),
       rule("Recency", el("p", { text: "Up to " + rc.max_points + " points: full within " + rc.full_points_within_months +
         " months of the latest signal, falling to zero after " + rc.zero_points_after_months + " months. Events older than " +
         R.lead_window_months + " months are context only." })),
@@ -161,6 +166,19 @@
             ";--bar-top:" + d3.interpolateRgb(color, "#fff")(0.15) })),
         el("div", { class: "rule-t", text: f.rule }));
     }));
+    $("funnel-recon").textContent = reconLine(S.data.summary);
+  }
+
+  // "533 leads = List A 241 (buyer named) + List B 234 (no buyer yet) + 58 other (...). List C = ..." from live counts
+  function reconLine(m) {
+    if (!m) return "";
+    const o = m.other_breakdown || {};
+    const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
+      [o.sale_no_public_buyer, "sales under way with no public buyer"], [o.shell_or_closed, "shell or closed"]]
+      .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
+    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
+      " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +
+      ". List C = " + fmtInt(m.list_c_buyers) + " repeat buyers, linked to " + fmtInt(m.list_c_linked_leads) + " of these leads.";
   }
 
   /* Replay on each Overview visit; cancel pending work when leaving or quickly switching pages. */
@@ -175,6 +193,11 @@
     overviewObservers = [];
     overviewFrames.forEach(cancelAnimationFrame);
     overviewFrames.clear();
+    // a cancelled count-up must never leave a number frozen mid-way (e.g. 400 of 533): snap to the real value
+    document.querySelectorAll("#kpis [data-n], #funnel [data-n]").forEach((node) => {
+      const n = Number(node.dataset.n);
+      if (isFinite(n)) node.textContent = fmtInt(n) + (node.dataset.suffix || "");
+    });
   }
   function countUp(node, delay = 0) {
     const n = Number(node.dataset.n);
@@ -264,9 +287,11 @@
     if (r.buyer && r.buyer_group === "confirmed") parts.push("a named buyer, " + r.buyer);
     else if (r.buyer && r.buyer_group === "candidate") parts.push("a candidate buyer, " + r.buyer);
     if (bd.size_fit > 0) parts.push("a size that fits a $3–30M loan");
+    if (bd.care_type_fit > 0) parts.push("assisted living / memory care (care-type fit, assumption)");
     if (bd.closed_sale_penalty < 0) parts.push("although its sale closed over a year ago");
     let s = "Ranked #" + r.rank + " because of " + (parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : parts[0]);
     if (bd.latest_signal_date) s += "; latest signal " + bd.latest_signal_date;
+    if (bd.buyer_diversity_cap) s += ". Shown just below the top 20 because that buyer already has two leads there";
     return s + ".";
   }
 
@@ -281,7 +306,8 @@
       ["Total leads", fmtInt(n), "public sources only", null, n, ""],
       ["List A", fmtInt(cnt("A")), "live deals, named buyer", "a", cnt("A"), ""],
       ["List B", fmtInt(cnt("B")), "pre-sale distress", "b", cnt("B"), ""],
-      ["List C", fmtInt((S.data.list_c || []).length), "repeat buyers", "c", (S.data.list_c || []).length, ""],
+      ["List C", fmtInt((S.data.list_c || []).length), "repeat buyers" + (S.data.summary ? " · linked to " +
+        fmtInt(S.data.summary.list_c_linked_leads) + " leads" : ""), "c", (S.data.list_c || []).length, ""],
       ["Senior housing", n ? Math.round((100 * senior) / n) + "%" : "–", fmtInt(senior) + " AL / IL / MC / CCRC leads", null, n ? Math.round((100 * senior) / n) : null, "%"],
       ["States covered", fmtInt(states), "with at least one lead", null, states, ""],
       ["Named buyer", n ? Math.round((100 * named) / n) + "%" : "–", fmtInt(named) + " confirmed in a source", null, n ? Math.round((100 * named) / n) : null, "%"],
@@ -354,7 +380,7 @@
         selectTab(TABS[next].key);
         $("tabs").querySelector('[aria-selected="true"]').focus({ preventScroll: true });
       },
-    }, el("span", { class: "dot " + t.cls }), t.label, el("span", { class: "count", text: fmtInt(counts[t.key] || 0) }))));
+    }, el("span", { class: "dot " + t.cls }), t.label, el("span", { class: "count", text: fmtInt(counts[t.key] || 0) + (t.key === "C" ? " buyers" : "") }))));
     for (const id of ["f-state", "f-care", "f-stage"]) $(id).classList.toggle("hidden", S.tab === "C");
     $("f-buyer").classList.toggle("hidden", S.tab !== "A");
     document.querySelector(".range").classList.toggle("hidden", S.tab === "C");
@@ -394,7 +420,7 @@
   /* ---------- table ---------- */
   // Widths live in CSS (.c-<key>) and are fixed, so List A and List B line up column for column; Property flexes.
   const LEAD_COLS = [
-    { key: "rank", label: "#", sort: (r) => r.rank },
+    { key: "rank", label: "#", sort: (r) => listRank(r) },
     { key: "property", label: "Property", sort: (r) => r.property || "" },
     { key: "state", label: "City / state", sort: (r) => (r.state || "") + (r.city || "") },
     { key: "care", label: "Care type" },
@@ -413,9 +439,13 @@
     { key: "source", label: "Source" },
   ];
 
+  function listRank(r) {             // List A / B tables: position in that list (its own display order)
+    return (S.tab === "A" && r.rank_a) || (S.tab === "B" && r.rank_b) || r.rank;
+  }
+
   function cell(col, r) {
     switch (col.key) {
-      case "rank": return el("td", { class: "rank", text: String(r.rank) });
+      case "rank": return el("td", { class: "rank", text: String(listRank(r)) });
       case "property": return el("td", { class: "prop", text: r.property || "" });
       case "state": return el("td", { class: "loc" }, r.city || r.state ? [r.city || "", r.city && r.state ? ", " : "", r.state || ""].join("") : nf());
       case "care": return el("td", {}, r.care_types.length ? r.care_types.join(" / ") : nf());
@@ -649,7 +679,7 @@
       header = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds", "signals",
         "stage", ...(S.tab === "A" ? ["buyer", "buyer_status"] : []), "score", "sources", "not_found"];
       lines = S.rows.map((r) => { const c = r.contact || {};
-        return [S.tab, r.rank, r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
+        return [S.tab, listRank(r), r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
           phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
           r.signals.join(";"), r.stage, ...(S.tab === "A" ? [r.buyer || "NOT FOUND", r.buyer_group] : []), r.score,
           r.sources.join(" "), r.not_found.join(";")]; });

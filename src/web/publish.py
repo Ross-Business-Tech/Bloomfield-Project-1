@@ -127,6 +127,8 @@ def main(argv=None) -> int:
     problems = leak_check(json.dumps(mask_place_names(snap), ensure_ascii=False, default=str))
     if raw_hits and not problems:
         print("note: hits only in home city names (public place names, allowed):", "; ".join(raw_hits))
+    from src.web.snapshot import funnel_problems
+    problems += funnel_problems(snap)                 # checked on the packed upload itself
     if size > MAX_BYTES:
         problems.append(f"upload too large ({size:,} > {MAX_BYTES:,} bytes)")
     print("leak / size check:", "clean" if not problems else "FAILED: " + "; ".join(problems))

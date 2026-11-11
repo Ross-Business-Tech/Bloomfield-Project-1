@@ -27,12 +27,12 @@ from src.common.config import OUTPUT_DIR, PROJECT_ROOT
 EXCLUDE_FILE = PROJECT_ROOT / "eval" / "private" / "exclude_facilities_PRIVATE.txt"
 NF = "NOT FOUND"
 # allowlist: nothing else from the view reaches the file (no score_breakdown, no ids, no review fields)
-FIELDS = ["property", "city", "state", "care_types", "units", "beds", "distress_type", "stage", "buyer",
+FIELDS = ["lead_id", "property", "city", "state", "care_types", "units", "beds", "distress_type", "stage", "buyer",
           "buyer_status", "score", "flags", "source_urls", "buyer_source_url", "first_seen", "last_updated",
           "score_breakdown"]
 # score_breakdown keys the website may show (scores, stage source, dates, buyer type); anything else is dropped,
 # e.g. other buyers seen or dropped debtor names
-BREAKDOWN_KEYS = ["total", "stage", "buyer", "recency", "size_fit", "court_sale_priority", "closed_sale_penalty",
+BREAKDOWN_KEYS = ["total", "stage", "buyer", "recency", "size_fit", "care_type_fit", "buyer_diversity_cap", "court_sale_priority", "closed_sale_penalty",
                   "hud_exit", "market_sale", "buyer_chain_quality", "stage_from", "latest_signal_date", "hard_events",
                   "bankruptcy_family", "buyer_date", "buyer_date_basis", "buyer_type", "buyer_type_source",
                   "buyer_parent", "buyer_parent_basis"]
@@ -70,7 +70,12 @@ def item(r: dict, lists: list[str]) -> dict:
     bd = r.get("breakdown") or {}
     sources = list(dict.fromkeys([u for u in [r.get("buyer_source_url"), *(r.get("source_urls") or [])] if public_link(u)]))
     d = lambda v: str(v)[:10] if v else None       # noqa: E731
-    out = {"rank": r["rank"], "property": r["property"], "city": r.get("city"), "state": r.get("state"),
+    g = r.get("geo") or {}
+    out = {"lead_id": str(r["lead_id"]) if r.get("lead_id") else None,
+           "lat": round(g["lat"], 5) if g.get("lat") is not None else NF,
+           "lon": round(g["lon"], 5) if g.get("lon") is not None else NF,
+           "coord_source": g.get("coord_source") or NF,
+           "rank": r["rank"], "rank_a": r.get("rank_a"), "rank_b": r.get("rank_b"), "property": r["property"], "city": r.get("city"), "state": r.get("state"),
            "care_types": r.get("care_types") or [], "units": r.get("units"), "beds": r.get("beds"),
            "signals": [x.strip() for x in (r.get("distress_type") or "").split(",") if x.strip()],
            "stage": r.get("stage"), "buyer": r.get("buyer") if r.get("buyer") not in (None, NF) else None,
@@ -118,25 +123,83 @@ def lead_row(r: dict, lst: str) -> dict:
     return out
 
 
-def build(rows: list[dict], skip: set[str], contacts: dict | None = None) -> dict:
+def funnel_problems(snap: dict) -> list[str]:
+    """The funnel's last stage must equal the public lead count (counts, items and summary agree)."""
+    shown = next((f["count"] for f in snap.get("funnel") or [] if f.get("step") == "Shown on Deal Radar"), None)
+    n = len(snap.get("items") or [])
+    out = []
+    if shown != n:
+        out.append(f"funnel 'Shown on Deal Radar' = {shown}, public leads = {n}")
+    if (snap.get("counts") or {}).get("leads") != n:
+        out.append(f"counts.leads = {(snap.get('counts') or {}).get('leads')}, items = {n}")
+    m = snap.get("summary")
+    if m and m["list_a"] + m["list_b"] + m["other"] != n:
+        out.append(f"summary A + B + other = {m['list_a'] + m['list_b'] + m['other']}, public leads = {n}")
+    return out
+
+
+def other_reason(r: dict) -> str | None:
+    """Why a public lead is in neither List A nor List B (None when it is in one of them)."""
+    from src.score.diversity import in_list_a
+    no_buyer = r.get("buyer") in (None, NF)
+    if in_list_a(r) or (no_buyer and r.get("stage") != "sale"):
+        return None
+    st = r.get("buyer_status")
+    if st == "candidate":
+        return "candidate"                 # stalking-horse / proposed bidder
+    if st == "stale":
+        return "stale"                     # named, ownership change older than buyer_named_max_months
+    if no_buyer:
+        return "sale_no_public_buyer"      # sale under way, buyer not public
+    return "shell_or_closed"               # shell buyer, undated buyer, or a sale that closed > 12 months ago
+
+
+def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dict:
+    """Reconciliation for the Funnel page and the deck (built from live counts)."""
+    reasons = defaultdict(int)
+    a = b = 0
+    for r in items_rows:
+        if r.get("rank_a"):
+            a += 1
+        elif r.get("rank_b"):
+            b += 1
+        else:
+            reasons[other_reason(r) or "shell_or_closed"] += 1
+    return {"leads": len(items_rows), "list_a": a, "list_b": b, "other": sum(reasons.values()),
+            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "shell_or_closed")},
+            "list_c_buyers": len(list_c_rows), "list_c_linked_leads": linked_leads}
+
+
+def build(rows: list[dict], skip: set[str], contacts: dict | None = None, geo: dict | None = None) -> dict:
     """rows: app.v_lead_list rows in score order (facility_id used to leave out excluded homes and to attach contacts).
     contacts: {facility_id: app.v_facility_contact row}."""
+    from src.score.diversity import diversity_order, in_list_a, settings
     contacts = contacts or {}
+    shown = [r for r in rows if str(r.get("facility_id")) not in skip]
+    ordered, cap_main = diversity_order(shown)          # display order: max N leads per buyer in the top 20
+    a_order, cap_a = diversity_order([r for r in shown if in_list_a(r)])
+    rank_a = {id(r): i for i, r in enumerate(a_order, 1)}
+    rank_b = {id(r): i for i, r in enumerate([r for r in shown if r.get("buyer") == NF and r.get("stage") != "sale"], 1)}
+    top_n, per = settings()
     kept = []
-    for i, r in enumerate(rows, 1):
-        if str(r.get("facility_id")) in skip:
-            continue
+    for i, r in enumerate(ordered, 1):
+        rid = str(r.get("lead_id") or r.get("facility_id"))
         x = {k: r.get(k) for k in FIELDS}
+        x["rank_a"], x["rank_b"] = rank_a.get(id(r)), rank_b.get(id(r))
+        if rid in cap_main or rid in cap_a:
+            where = " and ".join(w for w, c in (("main list", cap_main), ("List A", cap_a)) if rid in c)
+            x["score_breakdown"] = dict(x.get("score_breakdown") or {}, buyer_diversity_cap=(
+                f"more than {per} leads of this buyer in the top {top_n} of the {where}: shown below rank {top_n}"))
         x["breakdown"] = {k: v for k, v in (x.pop("score_breakdown") or {}).items() if k in BREAKDOWN_KEYS}
         x["rank"] = i
         x["contact"] = contacts.get(str(r.get("facility_id")))
+        x["geo"] = (geo or {}).get(str(r.get("facility_id")))
         x["score"] = float(x["score"]) if x["score"] is not None else None
         x["source_urls"] = [u for u in (x["source_urls"] or []) if public_link(u)]
         x["buyer_source_url"] = public_link(x["buyer_source_url"])
         kept.append(x)
-    a = [lead_row(r, "A") for r in kept if r["buyer_status"] == "named"
-         and "sale_closed_over_12m" not in (r["flags"] or [])]
-    b = [lead_row(r, "B") for r in kept if r["buyer"] == NF and r["stage"] != "sale"]
+    a = sorted([dict(lead_row(r, "A"), rank=r["rank_a"]) for r in kept if r["rank_a"]], key=lambda x: x["rank"])
+    b = sorted([dict(lead_row(r, "B"), rank=r["rank_b"]) for r in kept if r["rank_b"]], key=lambda x: x["rank"])
     by_buyer = defaultdict(list)
     for r in kept:
         if r["buyer_status"] == "named" and r["buyer"] and r["buyer"] != NF:
@@ -150,9 +213,7 @@ def build(rows: list[dict], skip: set[str], contacts: dict | None = None) -> dic
         c.append({"list": "C", "rank": len(c) + 1, "buyer": buyer, "homes_in_list": len(homes),
                   "example_homes": "; ".join(f"{h['property']} ({h['city'] or NF}, {h['state'] or NF})" for h in homes[:3]),
                   "public_source_link": link or NF})
-    in_a = {r["rank"] for r in a}
-    in_b = {r["rank"] for r in b}
-    items = [item(r, [x for x, ok in (("A", r["rank"] in in_a), ("B", r["rank"] in in_b)) if ok]) for r in kept]
+    items = [item(r, [x for x, ok in (("A", bool(r["rank_a"])), ("B", bool(r["rank_b"]))) if ok]) for r in kept]
     return {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "items": items,
             "source": "app.v_lead_list (public view)", "counts": {"leads": len(kept), "list_a": len(a),
                                                                    "list_b": len(b), "list_c": len(c)},
@@ -235,7 +296,8 @@ def rules_block() -> dict:
             "court_sale_priority": sc["court_sale_priority"], "buyer_named_bonus": sc["buyer_named_bonus"],
             "buyer_candidate_bonus": sc["buyer_candidate_bonus"], "buyer_named_max_months": sc["buyer_named_max_months"],
             "size_fit": sc["size_fit"], "recency": sc["recency"], "closed_sale_penalty": sc["closed_sale_penalty"],
-            "family_top_n": sc["family_top_n"], "name_only_top": sc["court_name_only"]["keep_out_of_top"]}
+            "family_top_n": sc["family_top_n"], "name_only_top": sc["court_name_only"]["keep_out_of_top"],
+            "care_type_fit": sc.get("care_type_fit"), "buyer_diversity": sc.get("buyer_diversity")}
 
 
 def _latest(pattern: str) -> Path | None:
@@ -298,7 +360,7 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
         {"step": "Main list", "count": main_all,
          "rule": f"{n_main}+ different distress signal types, or one hard event (bankruptcy, receivership, "
                  "foreclosure, loan default, court sale, closure ...)."},
-        {"step": "Shown on Deal Radar", "count": c["leads"],
+        {"step": "Shown on Deal Radar", "count": len(snap.get("items") or []) if "items" in snap else c["leads"],
          "rule": "Main-list leads whose evidence is public, each with its source links."},
         {"step": "List A", "count": c["list_a"], "rule": "Live deal with a buyer named in a source.", "list": "A"},
         {"step": "List B", "count": c["list_b"], "rule": "Distress before any sale; no buyer found yet.", "list": "B"},
@@ -306,7 +368,7 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
     ]
 
 
-UPLOAD_KEYS = ("generated_at", "counts", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
 UPLOAD_LIMIT = 950_000        # Render: all Secret Files of a service together must stay under 1 MB
 
 
@@ -334,6 +396,17 @@ def write(snap: dict, out: Path) -> None:
             w.writerows(snap[key])
 
 
+def fetch_geo(conn) -> dict:
+    """{facility_id: {lat, lon, coord_source}} from core.facility_geo; {} before its migration."""
+    try:
+        return {str(r["facility_id"]): dict(r) for r in conn.execute(
+            "select facility_id, lat, lon, coord_source from core.facility_geo").fetchall()}
+    except Exception as exc:
+        conn.rollback()
+        print(f"note: no coordinates ({type(exc).__name__}); run python -m src.enrich.geo", file=sys.stderr)
+        return {}
+
+
 def fetch_contacts(conn) -> dict:
     """{facility_id: contact row} from app.v_facility_contact; {} when the contact migration has not been applied yet."""
     try:
@@ -352,8 +425,9 @@ def main(argv=None) -> int:
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
         contacts = fetch_contacts(conn)
+        geo = fetch_geo(conn)
     skip = excluded()
-    snap = build(rows, skip, contacts)
+    snap = build(rows, skip, contacts, geo)
     with connect() as conn:
         skip_names = {(r["n"].upper(), (r["c"] or "").upper(), r["s"] or "") for r in conn.execute(
             "select canonical_name n, city c, state s from core.facility where facility_id = any(%s::uuid[])",
@@ -362,10 +436,13 @@ def main(argv=None) -> int:
         snap["explore"] = explore
         snap["counts"]["explore"] = len(explore)
         from src.score import list_c as list_c_public
-        c_rows, _ = list_c_public.build(conn)
+        c_rows, c_stats = list_c_public.build(conn)
+        linked = set(c_stats.get("linked_facility_ids") or [])
+        shown_ids = [str(r["facility_id"]) for r in rows if str(r.get("facility_id")) not in skip]
         snap["list_c"] = [{k: r[k] for k in ("list", "rank", "buyer", "buyer_type", "acquisitions_36mo", "homes_in_list",
                                              "latest_date", "example_homes", "public_source_link")} for r in c_rows]
         snap["counts"]["list_c"] = len(snap["list_c"])
+        snap["summary"] = summary(snap["items"], snap["list_c"], sum(1 for f in shown_ids if f in linked))
         snap["funnel"] = funnel(conn, snap, len(explore))
         snap["sources_table"] = source_rows(conn)
         snap["rules"] = rules_block()
