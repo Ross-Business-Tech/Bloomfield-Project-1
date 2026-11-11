@@ -108,3 +108,4 @@ scoring:            # docs/BUILD_SPEC.md step 7
     max_units: 250
     points: 10
   hud_exit_bonus: 10               # buyer has prior Section 232 loans
+  buyer_mega_platform_facilities: 100   # ASSUMPTION (Nov 11): buyer (or parent) with more homes = flag buyer_mega_platform, size_fit 0

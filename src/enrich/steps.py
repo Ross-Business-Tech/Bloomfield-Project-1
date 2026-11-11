@@ -18,6 +18,7 @@ from rapidfuzz import fuzz, process
 
 from src.common.bulk import bulk_upsert
 from src.common.config import PROJECT_ROOT, thresholds
+from src.common.normalize import city_alias
 from src.common.normalize import entity_stem, normalize_name, zip5
 
 from .match import (
@@ -161,7 +162,7 @@ def ccn_map(conn) -> dict[str, str]:
 def new_facility(batch: Batch, idx: FacilityIndex, *, name, street=None, city=None, state=None, zip_=None,
                  phone=None, care_types=(), beds=None, units=None) -> str:
     fid = str(uuid.uuid4())
-    row = {"facility_id": fid, "canonical_name": name.strip(), "street": clean(street), "city": clean(city),
+    row = {"facility_id": fid, "canonical_name": name.strip(), "street": clean(street), "city": city_alias(clean(city), state_code(state)),
            "state": state_code(state), "zip5": zip5(zip_), "phone": clean(phone),
            "care_types": list(care_types), "beds": beds, "units": units, "ccn": None}
     batch.facilities.append([row[c] for c in FAC_COLS])
@@ -854,7 +855,7 @@ def step_manual(conn, limit=None) -> dict:
         key = f"{f['case']}#{normalize_name(f['name'])}"
         x = conn.execute("select facility_id::text from core.facility_xref where source_id = %s and source_key = any(%s)",
                          (sid, [key, f["case"]] if not f.get("multi") else [key])).fetchone()
-        vals = (f["name"].upper(), (f.get("city") or "").upper() or None, f["state"], f.get("units"), f.get("beds"),
+        vals = (f["name"].upper(), (city_alias(f.get("city"), f["state"]) or "").upper() or None, f["state"], f.get("units"), f.get("beds"),
                 f.get("care_types") or [])
         if not x:
             # the building may already exist (another loader created it): same city and state, and the same name

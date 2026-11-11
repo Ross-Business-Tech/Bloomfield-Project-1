@@ -42,6 +42,9 @@ class Buyer:
     entity: str | None = None          # the shell / subsidiary that actually signed, when a parent is shown
     possible_insider: bool = False     # same brand as the bankrupt debtor (e.g. '<Debtor brand> Acquisitions LLC'): inferred
     dropped_debtor: list[str] = field(default_factory=list)   # hints dropped because they name the debtor itself
+    own_operator: list[str] = field(default_factory=list)     # hints dropped: the home's own current operator / licensee
+    facilities: int | None = None      # homes the buyer (or its parent) runs: CMS roles / chain size, whichever is larger
+    mega_platform: bool = False        # facilities > scoring.buyer_mega_platform_facilities
 
 
 def pick(hints: list[BuyerHint]) -> BuyerHint | None:
@@ -97,6 +100,15 @@ class BuyerResolver:
             if r["n"]:
                 self.family_debtors.setdefault(r["family_id"], set()).add(r["n"])
         self.fac_families: dict[str, set] = {}      # set by the caller from the facility's legal signals
+        # own-operator rule (Nov 11): each home's current operator / licensee orgs, and the orgs a recorded ownership
+        # change moved the home TO (those are real buyers even though they now operate it)
+        self.fac_ops: dict[str, set] = {}
+        for r in conn.execute("select r.facility_id::text f, r.org_id::text o, o.name from core.facility_role r "
+                              "join core.organization o using (org_id) where r.role in ('operator','licensee')").fetchall():
+            self.fac_ops.setdefault(r["f"], set()).update({r["o"], normalize_name(r["name"])})
+        self.transferred_to = {(r["f"], r["o"]) for r in conn.execute(
+            "select facility_id::text f, buyer_org_id::text o from core.ownership_event "
+            "where buyer_org_id is not null").fetchall()}
         self.known = {}
         for x in rules.buyer_orgs():
             for n in [x["name"]] + list(x.get("aliases") or []):
@@ -186,13 +198,38 @@ class BuyerResolver:
                     rel = "insider"
         return rel
 
+    def own_operator(self, facility_id: str, name: str, facility_name: str | None) -> bool:
+        """The 'buyer' is the home's own current operator / licensee: its normalized name contains the home's name
+        ('ARCADIA CARE TOULON LLC' for ARCADIA CARE TOULON), or it is the same CMS org as the home's operator /
+        licensee with no recorded ownership change to it. Generic rule; such a hint is not a buyer."""
+        n, fn = normalize_name(name), normalize_name(facility_name) if facility_name else ""
+        if fn and len(fn) >= 8 and fn in n:
+            return True
+        org_id, _ = self.org_for(name, None)
+        ops = self.fac_ops.get(facility_id, set())
+        return bool(org_id and org_id in ops and (facility_id, org_id) not in self.transferred_to)
+
+    def platform_size(self, org_id: str | None, chain: dict | None, *names) -> int:
+        n = len(self.org_facs.get(org_id, ())) if org_id else 0
+        if chain and chain.get("num_facilities"):
+            n = max(n, int(chain["num_facilities"]))
+        for nm in names:
+            oid, ch = self.org_for(nm, None) if nm else (None, None)
+            if oid:
+                n = max(n, len(self.org_facs.get(oid, ())))
+            if ch and self.chains.get(ch, {}).get("num_facilities"):
+                n = max(n, int(self.chains[ch]["num_facilities"]))
+        return n
+
     def resolve(self, facility_id: str, hints: list[BuyerHint], facility_name: str | None = None,
                 today: date | None = None) -> Buyer:
         dropped = [x.name for x in hints if self.debtor_relation(facility_id, x.name) == "debtor"]
         hints = [x for x in hints if x.name not in dropped]
+        own = [x.name for x in hints if self.own_operator(facility_id, x.name.split(";")[0].strip(), facility_name)]
+        hints = [x for x in hints if x.name not in own]
         h = pick(hints)
         if h is None:
-            return Buyer(dropped_debtor=sorted(set(dropped)))
+            return Buyer(dropped_debtor=sorted(set(dropped)), own_operator=sorted(set(own)))
         org_id, chain_id = self.org_for(h.name, h.org_id)
         chain = self.chains.get(chain_id) if chain_id else None
         prior_hud = bool(org_id and (self.org_facs.get(org_id, set()) - {facility_id}) & self.hud_facs)
@@ -202,6 +239,7 @@ class BuyerResolver:
                    for k, v in chain.items()} if chain else None,
                   prior_hud, h.family_id, alts, h.event_date, h.parent, "source" if h.parent else None)
         b.dropped_debtor = sorted(set(dropped))
+        b.own_operator = sorted(set(own))
         b.possible_insider = self.debtor_relation(facility_id, h.name) == "insider"
         first = h.name.split(";")[0].strip()          # joint buyers "A; B": type / parent from the first named
         known = self.known.get(normalize_name(first))
@@ -237,4 +275,6 @@ class BuyerResolver:
         if b.status == "named" and b.event_date and today and \
                 rules.months_between(b.event_date, today) > rules.cfg()["scoring"].get("buyer_named_max_months", 24):
             b.status = "stale"
+        b.facilities = self.platform_size(org_id, b.chain, b.parent, first)
+        b.mega_platform = b.facilities > int(rules.cfg()["scoring"].get("buyer_mega_platform_facilities", 100))
         return b
