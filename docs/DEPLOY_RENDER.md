@@ -11,8 +11,8 @@
   **Secret File**.
 - Every page and download needs a password (HTTP basic auth, `SITE_PASSWORD`). Pages are `noindex`, and
   `/robots.txt` disallows all crawling. Only `/healthz` (returns "ok", no data) and `/robots.txt` are open.
-- Pages: Dashboard, How it works (pipeline, sources, scoring rules, NOT FOUND policy), Funnel (counts and the rule
-  at each step), Explore (the watch list: public-source rows only, with the reason each is not on the main list).
+- Pages: Dashboard (key numbers and the funnel at the top, then map and lists; each lead has a contact panel, see
+  `CONTACTS.md`), How it works (pipeline, sources, scoring rules, NOT FOUND policy), Explore (the watch list: public-source rows only, with the reason each is not on the main list).
 - Lists: **A** live deals with a named buyer, **B** pre-sale distress with no buyer, **C** buyers named on 2+ homes in
   this list (built from public-view fields only; the fuller repeat-buyer / takeover list uses internal tables and is
   left out).

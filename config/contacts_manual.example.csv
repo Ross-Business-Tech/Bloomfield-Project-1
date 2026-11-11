@@ -1,0 +1,3 @@
+ccn,facility_id,kind,value,label,source_url
+000000,,phone,(555) 010-0100,Main line,https://example.org/made-up-listing
+000000,,website,https://www.example.org/maple-court,Website,https://example.org/made-up-listing
