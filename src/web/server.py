@@ -8,7 +8,7 @@
   without SITE_PASSWORD. /healthz (Render's health check: returns "ok", no data) and /robots.txt (disallow all) are
   the only unauthenticated paths.
 - noindex: a robots meta tag on the page and an X-Robots-Tag header on every response.
-Pages: / (the dashboard in src/web/static: KPIs, map, Lists A / B / C, detail panel), /api/snapshot.json (what the
+Pages: / (the dashboard in src/web/static: KPIs + funnel, map, Lists A / B / C, detail panel with contact details), /api/snapshot.json (what the
 dashboard reads), /api/<leads|list_a|list_b|list_c|top20>.json, /exports/list_<a|b|c>.csv.
 """
 from __future__ import annotations
@@ -26,14 +26,16 @@ from urllib.parse import urlsplit
 
 DEFAULT_SNAPSHOT = "/etc/secrets/site_snapshot.b64"
 NF = "NOT FOUND"
-LEAD_COLS = ["list", "rank", "property", "city", "state", "care_type", "units_or_beds", "signals", "stage", "buyer",
-             "buyer_status", "score", "flags", "public_source_link", "not_found"]
+LEAD_COLS = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds",
+             "signals", "stage", "buyer", "buyer_status", "score", "flags", "public_source_link", "not_found"]
 C_COLS = ["list", "rank", "buyer", "homes_in_list", "example_homes", "public_source_link"]
 ROBOTS = "User-agent: *\nDisallow: /\n"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {"app.js": "application/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
-                "states-albers-10m.json": "application/json"}
-CSP = ("default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; "
+                "states-albers-10m.json": "application/json",
+                "vendor/d3.min.js": "application/javascript; charset=utf-8",           # bundled: no outside script host
+                "vendor/topojson-client.min.js": "application/javascript; charset=utf-8"}
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'none'")
 SNAPSHOT_KEYS = ("generated_at", "counts", "items", "list_c", "explore", "funnel", "sources_table", "rules")
@@ -62,10 +64,17 @@ def load_snapshot(path: str | None = None) -> dict:
     return with_lists(snap)
 
 
+def phone_text(digits) -> str | None:
+    d = "".join(ch for ch in str(digits or "") if ch.isdigit())
+    return f"({d[:3]}) {d[3:6]}-{d[6:]}" if len(d) == 10 else None
+
+
 def flat_row(r: dict, lst: str) -> dict:
     size = r.get("units") or r.get("beds")
+    ct = r.get("contact") or {}
     out = {"list": lst, "rank": r.get("rank"), "property": r.get("property"), "city": r.get("city") or NF,
-           "state": r.get("state") or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
+           "state": r.get("state") or NF, "address": ", ".join(x for x in (ct.get("street"), ct.get("zip5")) if x) or NF,
+           "phone": phone_text(ct.get("phone")) or NF, "website": ct.get("website") or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
            "units_or_beds": size or NF, "signals": ", ".join(r.get("signals") or []) or NF,
            "stage": r.get("stage") or NF, "buyer": r.get("buyer") or NF, "buyer_status": r.get("buyer_status") or NF,
            "score": r.get("score"), "flags": ";".join(r.get("flags") or []),

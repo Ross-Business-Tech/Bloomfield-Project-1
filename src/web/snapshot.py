@@ -51,6 +51,20 @@ def buyer_group(r: dict) -> str:
     return "none"
 
 
+def contact_block(c: dict | None) -> dict:
+    """Business contact points for one building (allowlist; nothing personal). Empty values stay None = NOT FOUND."""
+    c = c or {}
+    phone = re.sub(r"\D", "", str(c.get("phone") or ""))
+    web = public_link(c.get("website"))
+    street = (c.get("street") or "").strip() or None
+    zip5 = (c.get("zip5") or "").strip() or None
+    out = {"phone": phone if len(phone) == 10 else None, "phone_label": c.get("phone_label") or None,
+           "phone_source": public_link(c.get("phone_source_url")), "website": web,
+           "website_source": public_link(c.get("website_source_url")), "street": street, "zip5": zip5,
+           "checked": str(c["contact_checked"])[:10] if c.get("contact_checked") else None}
+    return out
+
+
 def item(r: dict, lists: list[str]) -> dict:
     """One lead for the website (public-view fields only)."""
     bd = r.get("breakdown") or {}
@@ -64,13 +78,18 @@ def item(r: dict, lists: list[str]) -> dict:
            "flags": r.get("flags") or [], "sources": sources, "lists": lists,
            "breakdown": {k: bd[k] for k in BREAKDOWN_KEYS if k in bd},
            "deal_homes": (bd.get("deal") or {}).get("homes"), "first_seen": d(r.get("first_seen")),
-           "last_updated": d(r.get("last_updated"))}
+           "last_updated": d(r.get("last_updated")), "contact": contact_block(r.get("contact"))}
     out["not_found"] = [k for k, v in (("city", out["city"]), ("state", out["state"]), ("units", out["units"] or out["beds"]),
                                        ("care_type", out["care_types"]), ("buyer", out["buyer"]),
                                        ("source", out["sources"])) if not v]
     return out
-LEAD_COLS = ["list", "rank", "property", "city", "state", "care_type", "units_or_beds", "signals", "stage", "buyer",
-             "buyer_status", "score", "flags", "public_source_link", "not_found"]
+LEAD_COLS = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds",
+             "signals", "stage", "buyer", "buyer_status", "score", "flags", "public_source_link", "not_found"]
+
+
+def phone_text(digits) -> str | None:
+    d = re.sub(r"\D", "", str(digits or ""))
+    return f"({d[:3]}) {d[3:6]}-{d[6:]}" if len(d) == 10 else None
 
 
 def excluded() -> set[str]:
@@ -87,8 +106,10 @@ def lead_row(r: dict, lst: str) -> dict:
     size = r.get("units") or r.get("beds")
     links = [u for u in (r.get("source_urls") or []) if public_link(u)]
     link = public_link(r.get("buyer_source_url")) if lst == "A" else None
+    ct = r.get("contact") or {}
     out = {"list": lst, "rank": r["rank"], "property": r["property"], "city": r.get("city") or NF,
-           "state": r.get("state") or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
+           "state": r.get("state") or NF, "address": ", ".join(x for x in (ct.get("street"), ct.get("zip5")) if x) or NF,
+           "phone": phone_text(ct.get("phone")) or NF, "website": public_link(ct.get("website")) or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
            "units_or_beds": size or NF, "signals": r.get("distress_type") or NF, "stage": r.get("stage") or NF,
            "buyer": r.get("buyer") or NF, "buyer_status": r.get("buyer_status") or NF,
            "score": float(r["score"]) if r.get("score") is not None else None,
@@ -97,8 +118,10 @@ def lead_row(r: dict, lst: str) -> dict:
     return out
 
 
-def build(rows: list[dict], skip: set[str]) -> dict:
-    """rows: app.v_lead_list rows in score order (facility_id used only to leave out excluded homes)."""
+def build(rows: list[dict], skip: set[str], contacts: dict | None = None) -> dict:
+    """rows: app.v_lead_list rows in score order (facility_id used to leave out excluded homes and to attach contacts).
+    contacts: {facility_id: app.v_facility_contact row}."""
+    contacts = contacts or {}
     kept = []
     for i, r in enumerate(rows, 1):
         if str(r.get("facility_id")) in skip:
@@ -106,6 +129,7 @@ def build(rows: list[dict], skip: set[str]) -> dict:
         x = {k: r.get(k) for k in FIELDS}
         x["breakdown"] = {k: v for k, v in (x.pop("score_breakdown") or {}).items() if k in BREAKDOWN_KEYS}
         x["rank"] = i
+        x["contact"] = contacts.get(str(r.get("facility_id")))
         x["score"] = float(x["score"]) if x["score"] is not None else None
         x["source_urls"] = [u for u in (x["source_urls"] or []) if public_link(u)]
         x["buyer_source_url"] = public_link(x["buyer_source_url"])
@@ -310,6 +334,16 @@ def write(snap: dict, out: Path) -> None:
             w.writerows(snap[key])
 
 
+def fetch_contacts(conn) -> dict:
+    """{facility_id: contact row} from app.v_facility_contact; {} when the contact migration has not been applied yet."""
+    try:
+        return {str(r["facility_id"]): dict(r) for r in conn.execute("select * from app.v_facility_contact").fetchall()}
+    except Exception as exc:                      # undefined_table before the migration: the site just shows NOT FOUND
+        conn.rollback()
+        print(f"note: no contact data ({type(exc).__name__}); apply supabase/migrations/*_facility_contact.sql", file=sys.stderr)
+        return {}
+
+
 def main(argv=None) -> int:
     from src.common.db import connect
     ap = argparse.ArgumentParser(prog="python -m src.web.snapshot")
@@ -317,8 +351,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
+        contacts = fetch_contacts(conn)
     skip = excluded()
-    snap = build(rows, skip)
+    snap = build(rows, skip, contacts)
     with connect() as conn:
         skip_names = {(r["n"].upper(), (r["c"] or "").upper(), r["s"] or "") for r in conn.execute(
             "select canonical_name n, city c, state s from core.facility where facility_id = any(%s::uuid[])",

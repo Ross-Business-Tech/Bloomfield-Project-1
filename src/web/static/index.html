@@ -5,128 +5,166 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Deal Radar</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B1F3A'/%3E%3Ccircle cx='16' cy='16' r='4' fill='white'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B1F3A'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23C9A66B'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true"></span>
-      <span class="name">Deal Radar</span>
+  <a class="skip-link" href="#/leads">Skip to property lists</a>
+  <header class="topbar" id="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#/" aria-label="Deal Radar home">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="name">Deal Radar</span>
+      </a>
       <span class="asof" id="asof">Loading…</span>
+      <nav class="nav" aria-label="Pages">
+        <a href="#/" data-view="dashboard">Dashboard</a>
+        <a href="#/overview" data-view="overview">Overview</a>
+        <a href="#/how" data-view="how">How it works</a>
+        <a href="#/explore" data-view="explore">Explore</a>
+      </nav>
+      <button class="btn primary" id="download" type="button">Download CSV</button>
     </div>
-    <nav class="nav" aria-label="Pages">
-      <a href="#/" data-view="dashboard">Dashboard</a>
-      <a href="#/how" data-view="how">How it works</a>
-      <a href="#/funnel" data-view="funnel">Funnel</a>
-      <a href="#/explore" data-view="explore">Explore</a>
-    </nav>
-    <button class="btn primary" id="download" type="button">Download CSV</button>
   </header>
 
-  <main class="page view" id="view-dashboard">
-    <section class="kpis" id="kpis" aria-label="Key numbers"></section>
+  <div class="wrap load-error hidden" id="load-error" role="alert"></div>
 
-    <section class="card map-card">
-      <div class="card-head">
-        <div>
-          <h2>Leads by state</h2>
-          <p class="muted" id="map-hint">Hover a state for its count; click to filter.</p>
+  <main class="view hidden" id="view-overview">
+    <div class="wrap page">
+      <header class="page-head">
+        <h1>Market overview</h1>
+        <p>Senior housing and skilled nursing, from public signals to actionable leads.</p>
+      </header>
+      <section class="card overview-summary" aria-label="Key numbers">
+        <div class="kpis" id="kpis"></div>
+      </section>
+      <section class="card prose screening" aria-labelledby="screening-title">
+        <h2 id="screening-title">From public signals to Deal Radar</h2>
+        <p class="muted">How properties reach the main list.</p>
+        <div id="funnel" class="funnel"></div>
+        <p class="funnel-note">Bar lengths use a log scale. The watch list is a separate group; these counts are not additive.</p>
+      </section>
+    </div>
+  </main>
+
+  <main class="view" id="view-dashboard">
+    <div class="wrap page">
+      <header class="page-head">
+        <div><h1>Property dashboard</h1>
+          <p class="muted">Explore public leads by location, review the evidence, and contact the property.</p></div>
+      </header>
+      <section class="card map-card">
+        <div class="card-head">
+          <div>
+            <h2>Leads by state</h2>
+            <p class="muted" id="map-hint">Hover a state for its count; click to filter the lists below.</p>
+          </div>
+          <button class="btn ghost hidden" id="clear-state" type="button">Clear state</button>
         </div>
-        <button class="btn ghost hidden" id="clear-state" type="button">Clear state</button>
-      </div>
-      <div class="map-wrap">
-        <svg id="map" viewBox="0 0 975 610" role="img" aria-label="Map of leads by state"></svg>
-        <div class="tooltip hidden" id="tooltip" role="status"></div>
-        <div class="legend" id="legend"></div>
-      </div>
-    </section>
+        <div class="map-wrap">
+          <svg id="map" viewBox="0 0 975 610" role="img" aria-label="Map of leads by state"></svg>
+          <div class="tooltip hidden" id="tooltip" role="status"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </section>
 
-    <section class="card list-card">
-      <div class="tabs" role="tablist" id="tabs"></div>
-      <div class="filters" id="filters">
-        <input type="search" id="f-search" placeholder="Search property, city, buyer" aria-label="Search">
-        <select id="f-state" aria-label="State"></select>
-        <select id="f-care" aria-label="Care type"></select>
-        <select id="f-stage" aria-label="Stage"></select>
-        <select id="f-buyer" aria-label="Buyer status"></select>
-        <label class="range">Score
-          <input type="number" id="f-min" min="0" step="5" placeholder="min" aria-label="Minimum score">
-          <span>–</span>
-          <input type="number" id="f-max" min="0" step="5" placeholder="max" aria-label="Maximum score">
-        </label>
-        <button class="btn ghost" id="f-reset" type="button">Reset</button>
-      </div>
-      <div class="result-row">
-        <span id="result-count" class="muted"></span>
-        <span id="notice" class="notice hidden"></span>
-      </div>
-      <div class="table-wrap" id="table-wrap">
-        <table id="table">
-          <thead id="thead"></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-        <div class="empty hidden" id="empty"></div>
-      </div>
-      <div class="pager" id="pager"></div>
-    </section>
-    <p class="foot muted">Public sources only. Each lead links to the filings, data sets and articles it rests on.
-      Fields shown as <span class="nf">NOT FOUND</span> were not stated in any source.</p>
+      <section class="card list-card" id="lists" tabindex="-1" aria-label="Property and buyer lists">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="filters" id="filters">
+          <input type="search" id="f-search" placeholder="Search property, city, buyer" aria-label="Search">
+          <select id="f-state" aria-label="State"></select>
+          <select id="f-care" aria-label="Care type"></select>
+          <select id="f-stage" aria-label="Stage"></select>
+          <select id="f-buyer" aria-label="Buyer status"></select>
+          <label class="range">Score
+            <input type="number" id="f-min" min="0" step="5" placeholder="min" aria-label="Minimum score">
+            <span>to</span>
+            <input type="number" id="f-max" min="0" step="5" placeholder="max" aria-label="Maximum score">
+          </label>
+          <button class="btn ghost" id="f-reset" type="button">Reset</button>
+        </div>
+        <div class="result-row">
+          <span id="result-count" class="muted"></span>
+          <span id="notice" class="notice hidden"></span>
+        </div>
+        <div class="table-wrap" id="table-wrap">
+          <table id="table" class="grid">
+            <colgroup id="colgroup"></colgroup>
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div class="empty hidden" id="empty"></div>
+        </div>
+        <div class="pager" id="pager"></div>
+      </section>
+      <p class="foot muted">Public sources only. Each lead links to the filings, data sets and articles it rests on.
+        Fields shown as <span class="nf">NOT FOUND</span> were not stated in any source.</p>
+    </div>
   </main>
 
-  <main class="page view hidden" id="view-how">
-    <section class="card prose">
-      <h1>How it works</h1>
-      <p class="lede">Deal Radar reads public records and news about senior housing, links every fact to the building it
-        is about, and ranks the buildings that show distress. Every lead links back to its sources.</p>
-      <div class="pipeline" id="pipeline" aria-label="Pipeline"></div>
-    </section>
-    <section class="card prose"><h2>Sources</h2>
-      <p class="muted">Public sources only. Counts are what the latest run holds.</p>
-      <div class="table-wrap plain"><table id="sources-table"></table></div>
-    </section>
-    <section class="card prose"><h2>How a building is scored</h2><div id="rules"></div></section>
-    <section class="card prose"><h2>NOT FOUND, never guessed</h2>
-      <p>A fact is shown only when a source states it. Anything no source states is written
-        <span class="nf">NOT FOUND</span> (highlighted amber) instead of being estimated: a missing buyer, unit count,
-        city or link stays NOT FOUND until a source names it. Inferred facts (a parent company matched by brand, a state
-        deduced from a city) are labelled as inferred.</p>
-      <p><strong>Public sources only.</strong> Everything on this site comes from public filings, government data sets
-        and published articles, and each lead lists its links. Leads whose evidence is not public are not shown.</p>
-    </section>
+  <main class="view hidden" id="view-how">
+    <div class="wrap page">
+      <header class="page-head">
+        <h1>How it works</h1>
+        <p>How public records become property leads, with evidence behind every score.</p>
+      </header>
+      <section class="card prose">
+        <h2>From records to leads</h2>
+        <p>Deal Radar reads public records and news about senior housing, links every fact to the building it
+          is about, and ranks the buildings that show distress. Every lead links back to its sources.</p>
+        <div class="pipeline" id="pipeline" aria-label="Pipeline"></div>
+      </section>
+      <section class="card prose"><h2>Sources</h2>
+        <p class="muted">Public sources only. Counts are what the latest run holds.</p>
+        <div class="table-wrap plain"><table id="sources-table"></table></div>
+      </section>
+      <section class="card prose"><h2>How a building is scored</h2><div id="rules"></div></section>
+      <section class="card prose"><h2>Contact details</h2>
+        <p>Each lead shows the property's main phone line, its public website and its street address, so you can reach
+          out directly. Only business contact points are shown (never personal names, mobile numbers or personal
+          e-mail), and each one links to the public page it came from with the date it was checked. When a source does
+          not give one, it reads <span class="nf">NOT FOUND</span>.</p>
+      </section>
+      <section class="card prose"><h2>NOT FOUND, never guessed</h2>
+        <p>A fact is shown only when a source states it. Anything no source states is written
+          <span class="nf">NOT FOUND</span> (highlighted amber) instead of being estimated: a missing buyer, unit count,
+          city, phone or link stays NOT FOUND until a source names it. Inferred facts (a parent company matched by brand,
+          a state deduced from a city) are labelled as inferred.</p>
+        <p><strong>Public sources only.</strong> Everything on this site comes from public filings, government data sets
+          and published articles, and each lead lists its links. Leads whose evidence is not public are not shown.</p>
+      </section>
+    </div>
   </main>
 
-  <main class="page view hidden" id="view-funnel">
-    <section class="card prose">
-      <h1>From every building to a short list</h1>
-      <p class="lede">Each step applies one rule. The bars are to scale on a log axis so the small steps stay visible.</p>
-      <div id="funnel" class="funnel"></div>
-    </section>
-  </main>
-
-  <main class="page view hidden" id="view-explore">
-    <section class="card list-card">
-      <div class="card-head"><div><h1 class="h2">Explore the watch list</h1>
-        <p class="muted">Buildings with public distress signals that do not (yet) meet the main-list bar. Each row says why.</p></div></div>
-      <div class="filters">
-        <input type="search" id="x-search" placeholder="Search property, city, buyer" aria-label="Search watch list">
-        <select id="x-state" aria-label="State"></select>
-        <select id="x-care" aria-label="Care type"></select>
-        <select id="x-signal" aria-label="Signal"></select>
-        <button class="btn ghost" id="x-reset" type="button">Reset</button>
-      </div>
-      <div class="result-row"><span id="x-count" class="muted"></span></div>
-      <div class="table-wrap"><table id="x-table"><thead id="x-thead"></thead><tbody id="x-tbody"></tbody></table>
-        <div class="empty hidden" id="x-empty"><strong>No rows match these filters.</strong></div></div>
-      <div class="pager" id="x-pager"></div>
-    </section>
+  <main class="view hidden" id="view-explore">
+    <div class="wrap page">
+      <header class="page-head">
+        <h1>Explore the watch list</h1>
+        <p>Buildings with public distress signals that do not yet meet the main-list bar.</p>
+      </header>
+      <section class="card list-card">
+        <div class="card-head"><div><h2>Watch-list properties</h2>
+          <p class="muted">Each row explains why the property is below the main-list bar.</p></div></div>
+        <div class="filters">
+          <input type="search" id="x-search" placeholder="Search property, city, buyer" aria-label="Search watch list">
+          <select id="x-state" aria-label="State"></select>
+          <select id="x-care" aria-label="Care type"></select>
+          <select id="x-signal" aria-label="Signal"></select>
+          <button class="btn ghost" id="x-reset" type="button">Reset</button>
+        </div>
+        <div class="result-row"><span id="x-count" class="muted"></span></div>
+        <div class="table-wrap"><table id="x-table" class="grid x"><thead id="x-thead"></thead><tbody id="x-tbody"></tbody></table>
+          <div class="empty hidden" id="x-empty"><strong>No rows match these filters.</strong></div></div>
+        <div class="pager" id="x-pager"></div>
+      </section>
+    </div>
   </main>
 
   <div class="scrim hidden" id="scrim"></div>
-  <aside class="panel hidden" id="panel" aria-label="Lead details" aria-hidden="true">
+  <aside class="panel hidden" id="panel" role="dialog" aria-modal="true" aria-labelledby="p-title" aria-hidden="true">
     <div class="panel-head">
       <div>
         <div class="panel-kicker" id="p-kicker"></div>
@@ -138,10 +176,8 @@
     <div class="panel-body" id="p-body"></div>
   </aside>
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
-          integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"
-          integrity="sha384-Ukv1p/xTma6P4/2bY5KzWBw+ydSpXmhCMtyciIQVDJ1RmOxtCYNMF1uXT9T63H67" crossorigin="anonymous"></script>
+  <script src="/static/vendor/d3.min.js"></script>
+  <script src="/static/vendor/topojson-client.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

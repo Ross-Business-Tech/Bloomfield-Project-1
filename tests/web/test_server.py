@@ -220,3 +220,65 @@ def test_misconfigured_start_serves_no_data_but_stays_up(tmp_path, monkeypatch):
         assert code == 503 and "not configured" in body and "Acme" not in body
     finally:
         srv.shutdown()
+
+
+# ---------- contact information ----------
+CONTACT_ROWS = {
+    "keep-1": {"facility_id": "keep-1", "street": "1 Main St", "zip5": "48104", "phone": "5550100100",
+               "phone_label": "Main line", "phone_source_url": "https://data.cms.gov/x",
+               "website": "https://www.acme.example", "website_source_url": "https://a.example/w",
+               "contact_checked": "2026-11-11", "personal_email": "boss@example.com", "admin_name": "Jane Doe"},
+    "keep-2": {"facility_id": "keep-2", "phone": "not a phone", "website": "javascript:alert(1)"},
+}
+
+
+def test_contacts_are_attached_with_an_allowlist():
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    one = next(i for i in snap["items"] if i["property"] == "<b>Acme Manor</b>")["contact"]
+    assert one["phone"] == "5550100100" and one["website"] == "https://www.acme.example"
+    assert one["street"] == "1 Main St" and one["checked"] == "2026-11-11"
+    blob = json.dumps(snap)
+    assert "boss@example.com" not in blob and "Jane Doe" not in blob       # nothing personal reaches the snapshot
+
+
+def test_bad_contact_values_become_not_found():
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    two = next(i for i in snap["items"] if i["property"] == "Birch Home")["contact"]
+    assert two["phone"] is None and two["website"] is None
+
+
+def test_no_contacts_at_all_still_builds():
+    snap = snapshot.build(ROWS, {"past-deal"})
+    assert all(i["contact"]["phone"] is None for i in snap["items"])
+    assert snap["list_a"][0]["phone"] == "NOT FOUND"
+
+
+def test_csv_has_phone_and_website(site):
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    rows = server.with_lists(snap)["list_a"]
+    csv_text = server.to_csv(rows, server.LEAD_COLS)
+    assert "(555) 010-0100" in csv_text and "https://www.acme.example" in csv_text
+
+
+def _get(base, path):
+    req = urllib.request.Request(base + path, headers={"Authorization": "Basic " + base64.b64encode(f"u:{PW}".encode()).decode()})
+    return urllib.request.urlopen(req)
+
+
+def test_page_loads_no_outside_scripts_and_bundled_libraries_are_served(site):
+    html = _get(site, "/").read().decode()
+    assert "cdn.jsdelivr.net" not in html
+    for src in re.findall(r'<script src="([^"]+)"', html):
+        assert src.startswith("/static/"), src
+        assert _get(site, src).status == 200
+    assert "cdn.jsdelivr.net" not in _get(site, "/static/app.js").headers.get("Content-Security-Policy", "")
+    assert "script-src 'self';" in _get(site, "/").headers["Content-Security-Policy"]
+
+
+def test_key_numbers_and_funnel_share_the_overview_page():
+    html = (server.STATIC_DIR / "index.html").read_text()
+    assert 'id="view-funnel"' not in html and 'data-view="funnel"' not in html
+    overview = re.search(r'<main[^>]+id="view-overview"[^>]*>(.*?)</main>', html, re.S).group(1)
+    assert 'id="kpis"' in overview and 'id="funnel"' in overview
+    assert 'id="map"' not in overview
+    assert html.index('data-view="dashboard"') < html.index('data-view="overview"') < html.index('data-view="how"')
