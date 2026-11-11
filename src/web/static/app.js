@@ -15,7 +15,7 @@
   const SENIOR_TYPES = ["AL", "IL", "MC", "CCRC"];
   const CARE_TYPES = ["SNF", "AL", "IL", "MC", "CCRC"];
   const STAGES = ["early", "middle", "late", "sale"];
-  const BUYER_GROUPS = [["confirmed", "Confirmed"], ["candidate", "Candidate"], ["inferred", "Inferred"], ["none", "Not found"]];
+  const BUYER_GROUPS = [["confirmed", "Confirmed"], ["candidate", "Candidate · not final"], ["inferred", "Inferred"], ["none", "Not found"]];
   const HARD = new Set(["chapter_11", "chapter_7", "receivership", "foreclosure", "deed_in_lieu", "closure",
     "warn_closure", "hud_loan_terminated", "loan_or_lease_default", "court_sale_process", "hud_delinquency",
     "special_servicing", "lender_takeback", "maturity_default"]);
@@ -285,7 +285,7 @@
     else if (hard.length) parts.push((hard.length > 1 ? "hard events (" : "a hard event (") + hard.join(", ") + ")");
     else parts.push(r.signals.length + " distress signals (" + r.signals.map(pretty).join(", ") + ")");
     if (r.buyer && r.buyer_group === "confirmed") parts.push("a named buyer, " + r.buyer);
-    else if (r.buyer && r.buyer_group === "candidate") parts.push("a candidate buyer, " + r.buyer);
+    else if (r.buyer && r.buyer_group === "candidate") parts.push("a candidate buyer (not final), " + r.buyer);
     if (bd.size_fit > 0) parts.push("a size that fits a $3–30M loan");
     if (bd.care_type_fit > 0) parts.push("assisted living / memory care (care-type fit, assumption)");
     if (bd.closed_sale_penalty < 0) parts.push("although its sale closed over a year ago");
@@ -473,7 +473,7 @@
     }
   }
   function statusBadge(r) {
-    const label = { confirmed: "confirmed", candidate: "candidate", inferred: "inferred", none: "not found" }[r.buyer_group];
+    const label = { confirmed: "confirmed", candidate: "Candidate · not final", inferred: "inferred", none: "not found" }[r.buyer_group];
     return el("span", { class: "badge " + r.buyer_group, text: label, title: "status in source: " + r.buyer_status });
   }
   function scoreBar(v) {
@@ -569,7 +569,7 @@
         : el("p", { class: "muted", text: "No dated events in the public data." })));
 
     // buyer block
-    const conf = { confirmed: "Named in a source", candidate: "Candidate (proposed / stalking horse)",
+    const conf = { confirmed: "Named in a source", candidate: "Candidate · not final (proposed / stalking-horse bidder)",
       inferred: "Inferred (parent matched by brand, or a shell / older buyer)", none: "No buyer found" }[r.buyer_group];
     if (r.buyer || r.lists.includes("A")) sections.push(section("Buyer", el("dl", { class: "facts" },
       el("dt", { text: "Name" }), el("dd", {}, r.buyer || nf()),
