@@ -9,7 +9,8 @@ cases:
     debtor_name: "Granite Senior Services, LLC"
     chapter: 11
     filed_date: 2026-03-30
-    source_url: https://www.inforuptcy.com/browse-filings/new-hampshire-bankruptcy-court/1:26-bk-10275/bankruptcy-case-granite-senior-services-llc
+    source_url: https://www.courtlistener.com/docket/73116750/granite-senior-services-llc/   # public docket (CourtListener id 73116750)
+    # also listed at https://www.inforuptcy.com/browse-filings/new-hampshire-bankruptcy-court/1:26-bk-10275/bankruptcy-case-granite-senior-services-llc
 
 # links: extra bankruptcy case -> facility links, confirmed by an address or CCN source.
 #   case:          court:docket as in core.legal_case (e.g. pawb:26-22481)
@@ -58,6 +59,8 @@ buyers:
   # Inspired Healthcare Capital (N.D. Tex. 26-90004): stalking-horse bidders designated before the Jul 29, 2026 auction
   # (AltsWire, Jul 23, 2026). The court approved the final sales in Oct 2026 (29 communities, 10 buyers), but no public
   # source we can read names the final buyer per home, so these stay candidates (stalking horse = candidate).
+  # Checked Nov 11, 2026 (CourtListener docket 72222161): sale orders per home were entered Oct 13, 2026 (ECF 1970-1981)
+  # but the docket text does not name the buyers and the order PDFs are not in the free RECAP archive (PACER only).
   - case: "txnb:26-90004"
     home: "Azalea at Delray Beach"
     name: "Inspired Florida Acquisitions LLC"

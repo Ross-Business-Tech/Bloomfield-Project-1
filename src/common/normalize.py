@@ -106,3 +106,24 @@ def entity_stem(name: str | None) -> str:
     raw = re.sub(r"\b(dst|mt|op\s?co|prop\s?co|master\s+tenant)\b[\s,.]*((llc|l\.l\.c\.|inc|lp|ltd)\.?)?\s*$", " ",
                  (name or "").strip(), flags=re.I)
     return normalize_name(raw)
+
+
+_CITY_ALIASES: dict | None = None
+
+
+def city_alias(city: str | None, state: str | None) -> str | None:
+    """config/city_aliases.yaml: 'Orion', 'MI' -> 'Lake Orion' (case kept: an all-caps input gives an all-caps output)."""
+    global _CITY_ALIASES
+    if not city or not state:
+        return city
+    if _CITY_ALIASES is None:
+        import yaml
+        from src.common.config import PROJECT_ROOT
+        path = PROJECT_ROOT / "config" / "city_aliases.yaml"
+        raw = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
+        _CITY_ALIASES = {(str(s).upper(), str(k).strip().upper()): str(v).strip()
+                         for s, m in raw.items() for k, v in (m or {}).items()}
+    new = _CITY_ALIASES.get((str(state).upper(), city.strip().upper()))
+    if not new:
+        return city
+    return new.upper() if city.isupper() else new

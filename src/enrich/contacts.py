@@ -112,6 +112,12 @@ def write(conn, rows: list[dict]) -> dict:
                                (r["facility_id"],)).fetchone()
         else:
             fac = conn.execute("select facility_id from core.facility where ccn = %s", (r["ccn"],)).fetchone()
+            if not fac:
+                # a merged duplicate keeps its CCN with a letter suffix (e.g. '475019B'); accept it only when exactly
+                # one building carries that CCN + suffix
+                hits = conn.execute("select facility_id from core.facility where ccn ~ ('^' || %s || '[A-Z]+$')",
+                                    (r["ccn"],)).fetchall()
+                fac = hits[0] if len(hits) == 1 else None
         if not fac:
             unmatched += 1
             continue
