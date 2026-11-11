@@ -194,3 +194,29 @@ def test_real_extra_pages_have_no_private_traces():
         assert not any(r["property"].upper() == n and (r["city"] or "").upper() == c for r in rows), n
     assert all(r["sources"] and all(u.startswith("http") for u in r["sources"]) for r in rows)
     assert all("hard event" in r["reason"] or "broker sale" in r["reason"] for r in rows)
+
+
+def test_start_up_falls_back_to_the_other_snapshot_file(tmp_path, monkeypatch):
+    snap = snapshot.build(ROWS, {"past-deal"})
+    (tmp_path / "site_snapshot.json").write_text(json.dumps(snap))
+    monkeypatch.setenv("SNAPSHOT_PATH", str(tmp_path / "site_snapshot.b64"))      # points at the new name
+    assert server.find_snapshot() == tmp_path / "site_snapshot.json"            # the old upload still works
+    monkeypatch.setenv("SITE_PASSWORD", PW)
+    handler, problem = server.build_handler()
+    assert problem is None
+
+
+def test_misconfigured_start_serves_no_data_but_stays_up(tmp_path, monkeypatch):
+    monkeypatch.delenv("SITE_PASSWORD", raising=False)
+    monkeypatch.setenv("SNAPSHOT_PATH", str(tmp_path / "missing.b64"))
+    handler, problem = server.build_handler()
+    assert problem and "SITE_PASSWORD" in problem
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        assert get(base + "/healthz")[0] == 200
+        code, _, body = get(base + "/", PW)
+        assert code == 503 and "not configured" in body and "Acme" not in body
+    finally:
+        srv.shutdown()

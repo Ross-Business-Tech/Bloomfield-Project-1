@@ -161,11 +161,74 @@ def make_handler(snap: dict, password: str):
     return Handler
 
 
+SNAPSHOT_CANDIDATES = ("/etc/secrets/site_snapshot.b64", "/etc/secrets/site_snapshot.json")
+
+
+def find_snapshot() -> Path | None:
+    """SNAPSHOT_PATH first, then the same name with the other extension (.b64 <-> .json), then the default Render
+    Secret File paths. Lets a deploy keep working while the uploaded file is switched from .json to .b64."""
+    tried = []
+    env = os.environ.get("SNAPSHOT_PATH", "").strip()
+    if env:
+        p = Path(env)
+        tried += [p, p.with_suffix(".json" if p.suffix == ".b64" else ".b64")]
+    tried += [Path(x) for x in SNAPSHOT_CANDIDATES]
+    return next((p for p in tried if p.is_file()), None)
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)       # Render shows stdout / stderr in the service logs
+
+
+def not_configured_handler(problem: str):
+    """Bound to the port so Render sees a running service; /healthz answers, every page explains (no data)."""
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            path = urlsplit(self.path).path
+            code, body = (200, "ok (not configured)") if path == "/healthz" else \
+                (200, ROBOTS) if path == "/robots.txt" else (503, "Deal Radar is not configured yet: " + problem)
+            b = body.encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
+            self.end_headers()
+            self.wfile.write(b)
+
+        def log_message(self, fmt, *args):
+            sys.stderr.write("%s %s\n" % (self.command, urlsplit(self.path).path))
+    return Handler
+
+
+def build_handler():
+    """(handler, problem). problem is None when the site is fully configured."""
+    try:
+        password = site_password()
+    except ConfigError as exc:
+        return not_configured_handler("set SITE_PASSWORD (8+ characters) in Render > Environment."), str(exc)
+    path = find_snapshot()
+    if path is None:
+        return (not_configured_handler("upload the Secret File site_snapshot.b64 (Render > Environment > Secret Files)."),
+                f"snapshot file not found (SNAPSHOT_PATH={os.environ.get('SNAPSHOT_PATH', '') or 'unset'})")
+    try:
+        snap = load_snapshot(str(path))
+    except Exception as exc:                      # unreadable / truncated upload
+        return not_configured_handler("the uploaded snapshot could not be read; upload it again."), \
+            f"snapshot {path} unreadable: {type(exc).__name__}"
+    c = snap.get("counts", {})
+    log(f"snapshot loaded: {path} ({path.stat().st_size:,} bytes), generated {snap.get('generated_at')}, "
+        f"{c.get('leads', len(snap.get('items', [])))} leads, explore {c.get('explore', 0)}")
+    return make_handler(snap, password), None
+
+
 def main() -> int:
-    password = site_password()
-    snap = load_snapshot()
-    port = int(os.environ.get("PORT", "10000"))
-    ThreadingHTTPServer(("0.0.0.0", port), make_handler(snap, password)).serve_forever()
+    port = int(os.environ.get("PORT") or "8765")   # Render always sets PORT (usually 10000); 8765 = local default
+    handler, problem = build_handler()
+    if problem:
+        log(f"ERROR: {problem}. Serving a 'not configured' page (no data) until this is fixed and redeployed.")
+    httpd = ThreadingHTTPServer(("0.0.0.0", port), handler)
+    log(f"Deal Radar listening on 0.0.0.0:{port}" + (" (NOT CONFIGURED)" if problem else ""))
+    httpd.serve_forever()
     return 0
 
 
