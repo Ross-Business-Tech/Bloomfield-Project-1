@@ -35,11 +35,13 @@ def excluded() -> set[str]:
 
 
 def public_leads(conn) -> list[dict]:
+    from src.score.diversity import diversity_order
     rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
+    skip = excluded()
+    rows, _ = diversity_order([r for r in rows if str(r["facility_id"]) not in skip])   # display order (buyer cap)
     for i, r in enumerate(rows, 1):
         r["rank"] = i
-    skip = excluded()
-    return [r for r in rows if str(r["facility_id"]) not in skip]
+    return rows
 
 
 def lead_row(r: dict, lst: str) -> dict:
@@ -55,12 +57,16 @@ def lead_row(r: dict, lst: str) -> dict:
 
 
 def list_a(leads):
-    return [lead_row(r, "A") for r in leads if r["buyer_status"] == "named" and
-            "sale_closed_over_12m" not in (r.get("flags") or [])]
+    """List A in its own display order (score order with the buyer cap); rank = position in List A."""
+    from src.score.diversity import diversity_order, in_list_a
+    rows = sorted([r for r in leads if in_list_a(r)], key=lambda r: -(float(r["score"] or 0)))
+    rows, _ = diversity_order(rows)
+    return [dict(lead_row(r, "A"), rank=i) for i, r in enumerate(rows, 1)]
 
 
 def list_b(leads):
-    return [lead_row(r, "B") for r in leads if r["buyer"] == NF and r["stage"] != "sale"]
+    rows = sorted([r for r in leads if r["buyer"] == NF and r["stage"] != "sale"], key=lambda r: -(float(r["score"] or 0)))
+    return [dict(lead_row(r, "B"), rank=i) for i, r in enumerate(rows, 1)]
 
 
 def _latest(prefix: str) -> Path | None:
@@ -135,13 +141,15 @@ def main() -> int:
         leads = public_leads(conn)
         skip_names = {r["canonical_name"] for r in conn.execute(
             "select canonical_name from core.facility where facility_id = any(%s::uuid[])", (list(excluded()),)).fetchall()}
-        a, b, c = list_a(leads), list_b(leads), list_c(skip_names)
+        from src.score import list_c as list_c_public
+        a, b = list_a(leads), list_b(leads)
+        c, _ = list_c_public.build(conn)          # Nov 11: public-only repeat buyers (36 months, 2+ acquisitions)
         top = [dict(lead_row(r, "top20"), **{k: "" for k in CHECK_COLS}) for r in leads[:20]]
         nums = numbers(conn, leads, a, b, c)
     write("list_A_live_deals.csv", a, LEAD_COLS)
     write("list_B_presale_distress.csv", b, LEAD_COLS)
-    write("list_C_repeat_buyers.csv", c, ["list", "rank", "firm", "repeat_deals_24mo", "al_takeover_homes_24mo",
-                                          "example_homes", "public_source_link", "not_found"])
+    from src.score.list_c import COLS as C_COLS
+    write("list_C_repeat_buyers.csv", c, C_COLS)
     write("top_20_for_handcheck.csv", top, LEAD_COLS + CHECK_COLS)
     print({**nums, "date": str(date.today())})
     return 0

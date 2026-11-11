@@ -56,3 +56,12 @@ orgs:
     type: REIT
     note: 'user decision: REIT (senior housing and outpatient medical REIT)'
     source_url: https://www.nhpreit.com/
+  # Mega-platform override (Nov 11, 2026): won the Genesis HealthCare auction (N.D. Tex.) for the assets of a chain with
+  # "200 nursing centers and senior living communities" (Bisnow, Jan 15, 2026); the sale of substantially all operating
+  # assets closed Oct 14, 2026 (MyChesco), which did not disclose the exact number of facilities transferred.
+  - name: 101 W. State Street Holdings, LLC
+    aliases: [101 West State Street LLC, 101 W. State Street LLC, 101 West State Street Holdings, LLC]
+    facilities: 200
+    note: 'facility count = seller network size at the auction (Bisnow); buyer acquired substantially all operating assets (MyChesco)'
+    source_url: https://www.bisnow.com/news/national/healthcare/genesis-healthcare-chooses-1b-bid-in-bankruptcy-auction-132744
+    source_url_closing: https://www.mychesco.com/a/news/business/genesis-healthcare-exits-chapter-11-after-asset-sale/

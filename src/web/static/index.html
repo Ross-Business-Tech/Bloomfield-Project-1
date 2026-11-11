@@ -104,13 +104,13 @@
     <div class="wrap">
       <header class="page-head">
         <h1>Buyers</h1>
-        <p class="lede">The buyer is usually your borrower. <a href="#/leads/C">Repeat buyers (List C)</a></p>
+        <p class="lede">The buyer is usually your borrower.</p>
       </header>
       <div class="filters">
         <input type="search" id="b-search" placeholder="Search buyer or property" aria-label="Search buyers">
         <select id="b-status" aria-label="Buyer status"></select>
       </div>
-      <div class="result-row"><span id="b-count" class="muted" role="status"></span></div>
+      <nav class="b-jump" id="b-jump" aria-label="Buyer groups"></nav>
       <div id="buyers" class="buyers"></div>
       <div class="empty hidden" id="b-empty">
         <p class="state-title">No buyers match.</p>
@@ -133,6 +133,7 @@
       <section aria-labelledby="screening-title">
         <div class="sec-head"><h2 id="screening-title">From public signals to the list</h2></div>
         <div id="funnel" class="funnel"></div>
+        <p class="funnel-recon" id="funnel-recon"></p>
         <p class="muted small">Bar lengths use a log scale. The watch list is a separate group, so the counts do not add up.</p>
       </section>
     </div>

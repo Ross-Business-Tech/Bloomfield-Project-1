@@ -72,6 +72,11 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     dated = [s.event_date for s in current if s.event_date]
     latest = max(dated) if dated else None
     size_pts, size_known = rules.size_fit_points(fac.get("units"), fac.get("beds"))
+    ctf = rules.cfg()["scoring"].get("care_type_fit") or {}
+    care_pts = float(ctf.get("points", 0)) if set(fac.get("care_types") or []) & set(ctf.get("types") or []) else 0.0
+    mega = buyer.status != "NOT FOUND" and buyer.mega_platform
+    if mega:
+        size_pts = 0.0      # a buyer with 100+ homes borrows at platform level, not per building (assumption)
     buyer_pts = rules.buyer_points(buyer.status)
     hospital_buyer = buyer.buyer_type == "hospital/public" or \
         bool(buyer.name and _PUBLIC_HOSPITAL_BUYER.search(buyer.name))
@@ -107,6 +112,7 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         "buyer": buyer_pts,
         "buyer_chain_quality": chain_pts,
         "size_fit": size_pts,
+        "care_type_fit": care_pts,
         "hud_exit": hud_pts,
         "market_sale": market_pts,
         "closed_sale_penalty": closed_pts,
@@ -149,6 +155,12 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("buyer_hospital_district")
     if buyer.status != "NOT FOUND" and buyer.possible_insider:
         flags.append("buyer_possible_insider")    # same brand as the debtor (inferred)
+    if mega:
+        flags.append("buyer_mega_platform")
+        breakdown["buyer_facilities"] = buyer.facilities
+    if buyer.own_operator:
+        flags.append("buyer_is_own_operator")
+        breakdown["buyer_dropped_own_operator"] = buyer.own_operator   # the home's own operator: not a buyer
     if buyer.dropped_debtor:
         breakdown["buyer_dropped_debtor"] = buyer.dropped_debtor   # named the debtor / its affiliate: never a buyer
     # Wave 3.5 deliverable rule: licensed (private) facts never reach Bloomfield-facing output.
@@ -182,6 +194,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     for f in ("senior_housing_maybe", "portfolio_link"):
         if f in best.flags:
             flags.append(f)
+    if (fac.get("beds") or 0) > 300 and "senior_housing_maybe" in flags:
+        flags.append("size_check")              # very large + maybe not senior housing: check by hand (no score change)
     if factor(best) != 1.0 or any(factor(s) != 1.0 for s in court):
         flags.append("family_capped")
     types = []

@@ -10,21 +10,22 @@
 ## Layers (each click goes one level deeper; Esc, the breadcrumb or the Back button goes up)
 | Layer | URL | What is on screen | Originator's question |
 |---|---|---|---|
-| L0 USA | `#/map` | States shaded by lead count. Three numbers: leads, states, buyer named. Layer toggles A / B / C. | Where should I look? |
+| L0 USA | `#/map` | States shaded by lead count. Three numbers: leads, states, buyer named. Toggles for List A and List B filter the map; "C · 159 buyers" opens List C in Buyers (leads do not carry List C membership yet). | Where should I look? |
 | L1 State | `#/map/PA` | Animated zoom to the state. City bubbles sized by lead count (when leads carry coordinates), otherwise a ranked city list. Slim list of the state's leads: name, city, size, stage, buyer status, phone. | Where should I look? |
 | L2 City | `#/map/PA/pittsburgh` | Property pins: size = units or beds, colour = stage, a slow ping on late-stage or buyer-named pins, range rings for scale. Other cities stay as quiet dots. | What is happening here? |
-| L3 Property | `#/map/PA/pittsburgh/r4` | A card: property, place, size, care type, one-line why, stage and buyer chips, "fits $3-30M" chip when the size-fit rule applies, and two buttons: **Call** (or amber Phone NOT FOUND) and **Research**. | Who is taking it over? Who do I contact? |
-| L4 Research | `.../r4/research` | The lead detail drawer, unchanged: 1 why, 2 what is happening + sources, 3 who is taking it over, 4 who to contact, 5 score breakdown. | Can I trust this? |
+| L3 Property | `#/map/PA/pittsburgh/<lead_id>` | A card: property, place, size, care type, one-line why, stage and buyer chips, "fits $3-30M" chip when the size-fit rule applies, and two buttons: **Call** (or amber Phone NOT FOUND) and **Research**. | Who is taking it over? Who do I contact? |
+| L4 Research | `.../<lead_id>/research` | The lead detail drawer, unchanged: 1 why, 2 what is happening + sources, 3 who is taking it over, 4 who to contact, 5 score breakdown. | Can I trust this? |
 
 Always visible: **search** (property, buyer, city or state; Enter jumps to that layer) and the **breadcrumb** (USA > State > City > Property). The layer toggles ride along in the URL (`?l=AB`), so a link or the Back button restores the exact view.
 
-Secondary views, from the top bar: **Leads** (sortable table, brief rows on request, all filters, CSV), **Buyers** (leads grouped by buyer), and **?** (How it works and The numbers). The watch list is linked from Leads.
+Secondary views, from the top bar: **Leads** (sortable table, brief rows on request, all filters, CSV), **Buyers** (sticky group headers for Named / Candidate · not final / Unverified / List C; one block per buyer with a bold 16px name, one meta line and lead links), and **?** (How it works and The numbers). The watch list is linked from Leads.
 
 ## What degrades without coordinates (never invented)
 - L1: no city bubbles; the side panel leads with a ranked city list instead. The map shows the state outline and "Map positions NOT FOUND".
 - L2: no pins, rings or legend; the city's leads are the list, and choosing one opens the same L3 card.
 - Click count is the same either way: state, city, property, Call.
-- Coordinates are read from `lat` / `lon` (also `lng`, `latitude` / `longitude`, top level or under `contact`). A state can be partly covered: leads without coordinates stay in the list only.
+- Coordinates are read from `lat` / `lon`. Today they are ZIP-code centres (`coord_source: zip_centroid`), so the map says "approximate", never zooms closer than about a 60-mile window, and fans out leads that share a ZIP around one dashed circle. Leads without coordinates stay in the list only.
+- All headline counts (leads, List A, List B, List C buyers) come from the snapshot's `summary` block.
 
 ## Word budget
 - Home: a title, three numbers, three toggles, the map, a one-line legend.

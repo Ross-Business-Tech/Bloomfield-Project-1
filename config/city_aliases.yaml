@@ -1,0 +1,5 @@
+# City aliases applied when a facility's city is normalized (src.common.normalize.city_alias).
+# Key: two-letter state, then the city as a source writes it (case-insensitive) -> the city to use.
+# ASSUMPTION per alias: the source writes a township / mailing variant; the alias is the place name a lender would use.
+MI:
+  Orion: Lake Orion          # MI roster writes 'Orion' (Orion Township); street 985 N Lapeer Rd, ZIP 48362 (Lake Orion)

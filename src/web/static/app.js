@@ -84,10 +84,12 @@
     { key: "C", label: "List C", sub: "repeat buyers" },
   ];
   const BD_LABELS = [["court_sale_priority", "Court-supervised sale under way"], ["stage", "Distress stage"], ["buyer", "Buyer named or proposed"],
-    ["recency", "How recent the latest signal is"], ["size_fit", "Size fits a $3–30M loan"], ["hud_exit", "HUD loan ended"], ["market_sale", "Market sale reported"],
+    ["recency", "How recent the latest signal is"], ["size_fit", "Size fits a $3–30M loan"], ["care_type_fit", "Care-type fit (assumption)"], ["hud_exit", "HUD loan ended"], ["market_sale", "Market sale reported"],
     ["buyer_chain_quality", "Buyer's quality record"], ["closed_sale_penalty", "Sale closed over a year ago"]];
   const PAGE_SIZE = 25;
 
+  /* Headline counts come from the snapshot's summary block; the browser only counts when the block is missing. */
+  const SUM = (key, fallback) => { const v = ((S.data || {}).summary || {})[key]; return typeof v === "number" ? v : fallback; };
   const S = { data: null, tab: "all", state: "", page: 1, sort: { key: "rank", dir: 1 }, mode: "table", sel: -1, ctx: [], ctxIdx: -1 };
   const $ = (id) => document.getElementById(id);
 
@@ -193,6 +195,7 @@
     else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer, not final");
     else if (!r.buyer) parts.push("no buyer named yet");
     if (bd.size_fit > 0) parts.push("fits a $3–30M loan");
+    if (bd.care_type_fit > 0) parts.push("senior housing (care-type fit, an assumption)");
     if (bd.closed_sale_penalty < 0) parts.push("sale closed over a year ago");
     return parts;
   }
@@ -201,6 +204,7 @@
     const bd = r.breakdown || {};
     let s = "Ranked " + r.rank + " of " + fmtInt(S.data.items.length) + ": " + whyParts(r).join("; ");
     if (bd.latest_signal_date) s += ". Latest signal " + fmtDate(bd.latest_signal_date);
+    if (bd.buyer_diversity_cap) s += ". Shown just below the top 20 because that buyer already has two leads there";
     return s + ".";
   }
 
@@ -225,6 +229,8 @@
     buildExplore();
     buildSearch();
     await buildMap().catch(() => { $("stage").replaceChildren(el("p", { class: "state-title", text: "The map could not be drawn. Use search, or open Leads." })); });
+    const barH = () => document.documentElement.style.setProperty("--bar-h", $("topbar").offsetHeight + "px");    // sticky group headers sit under the bar
+    barH(); window.addEventListener("resize", barH);
     window.addEventListener("hashchange", route);
     route();
   }
@@ -302,7 +308,7 @@
 
   /* ---------- 4. The numbers ---------- */
   function buildKpis() {
-    const items = S.data.items, n = items.length;
+    const items = S.data.items, n = SUM("leads", items.length);
     const senior = items.filter((r) => r.care_types.some((t) => SENIOR_TYPES.includes(t))).length;
     const states = new Set(items.map((r) => r.state).filter(Boolean)).size;
     const named = items.filter((r) => r.buyer_group === "confirmed").length;
@@ -317,7 +323,19 @@
       el("dt", {}, el("span", { class: "value", "data-n": num, "data-suffix": suffix, text: fmtInt(num) + suffix })),
       el("dd", {}, label, sub ? el("span", { class: "sub", text: sub }) : null))));
   }
+  // "533 leads = List A 241 + List B 234 + 58 other (...). List C = ..." from the snapshot's summary block
+  function reconLine(m) {
+    if (!m) return "";
+    const o = m.other_breakdown || {};
+    const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
+      [o.sale_no_public_buyer, "sales under way with no public buyer"], [o.shell_or_closed, "shell or closed"]]
+      .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
+    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
+      " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +
+      ". List C = " + fmtInt(m.list_c_buyers) + " repeat buyers, linked to " + fmtInt(m.list_c_linked_leads) + " of these leads.";
+  }
   function buildFunnel() {
+    $("funnel-recon").textContent = reconLine(S.data.summary);
     const F = (S.data.funnel || []).filter((f) => !f.list);
     const max = Math.max(1, ...F.map((f) => f.count));
     $("funnel").replaceChildren(...F.map((f, i) => {
@@ -346,6 +364,7 @@
         el("td", { text: r.refresh })))));
     const R = S.data.rules || {};
     const sw = R.stage_weight || {}, sf = R.size_fit || {}, rc = R.recency || {}, cp = R.closed_sale_penalty || {};
+    const ctf = R.care_type_fit || {}, dv = R.buyer_diversity || {};
     const rule = (title, text) => el("div", { class: "rule" }, el("h3", { text: title }), el("p", { text }));
     $("rules").replaceChildren(el("div", { class: "rules" },
       rule("Getting on the list", "A building needs " + (R.main_min_signals || 3) + " or more different kinds of distress signal, or one hard event: " +
@@ -356,6 +375,10 @@
         ". A named buyer counts only if the change is under " + R.buyer_named_max_months + " months old. A buyer sharing the seller's brand is flagged as a possible insider."),
       rule("Deal size", "Buildings with " + sf.min_units + " to " + sf.max_units + " units or beds, a stand-in for a $3–30M loan, add " + sf.points +
         " points. A very large bankruptcy counts as one deal: only its top " + R.family_top_n + " properties keep full points."),
+      rule("Care-type fit (assumption)", "Assisted living, independent living, memory care and CCRC buildings add " + (ctf.points || 0) +
+        " points. This weighting is an assumption still to be confirmed."),
+      rule("Top 20 mix", "To keep the top of each list varied, at most " + (dv.per_buyer || 2) + " leads of one buyer appear in its top " + (dv.top_n || 20) +
+        "; further leads of that buyer keep their score and are shown just below rank " + (dv.top_n || 20) + "."),
       rule("Recency", "Up to " + rc.max_points + " points: full marks within " + rc.full_points_within_months + " months of the latest signal, falling to zero after " +
         rc.zero_points_after_months + " months. Events older than " + R.lead_window_months + " months are context only."),
       rule("Weak matches", "A court case matched to a building by name alone is marked unconfirmed and kept out of the top " + R.name_only_top +
@@ -457,8 +480,9 @@
   /* ---------- tabs ---------- */
   function selectTab(key) { S.tab = key; S.page = 1; S.sel = -1; S.sort = { key: "rank", dir: 1 }; buildTabs(); render(); }
   function buildTabs() {
-    const counts = { all: S.data.items.length, A: 0, B: 0, C: (S.data.list_c || []).length };
-    for (const r of S.data.items) for (const l of r.lists) counts[l] = (counts[l] || 0) + 1;
+    const have = { A: 0, B: 0 };
+    for (const r of S.data.items) for (const l of r.lists) have[l] = (have[l] || 0) + 1;
+    const counts = { all: SUM("leads", S.data.items.length), A: SUM("list_a", have.A), B: SUM("list_b", have.B), C: SUM("list_c_buyers", (S.data.list_c || []).length) };
     $("tabs").replaceChildren(...TABS.map((t, i) => el("button", {
       class: "tab", role: "tab", type: "button", "aria-selected": String(S.tab === t.key), tabindex: S.tab === t.key ? 0 : -1,
       onclick: () => { selectTab(t.key); $("tabs").querySelector('[aria-selected="true"]').focus({ preventScroll: true }); },
@@ -469,14 +493,14 @@
         selectTab(TABS[next].key);
         $("tabs").querySelector('[aria-selected="true"]').focus({ preventScroll: true });
       },
-    }, el("span", { class: "tl", text: t.label }), el("span", { class: "count", text: fmtInt(counts[t.key] || 0) }),
+    }, el("span", { class: "tl", text: t.label }), el("span", { class: "count", text: fmtInt(counts[t.key] || 0) + (t.key === "C" ? " buyers" : "") }),
       t.sub ? el("span", { class: "ts", text: t.sub }) : null)));
     for (const id of ["f-state", "f-care", "f-stage", "f-buyer"]) $(id).classList.toggle("hidden", S.tab === "C");
   }
 
   /* ---------- leads: brief rows (default) and sortable table ---------- */
   const LEAD_COLS = [
-    { key: "rank", label: "Rank", sort: (r) => r.rank, num: true },
+    { key: "rank", label: "Rank", sort: (r) => listRank(r), num: true },
     { key: "property", label: "Property", sort: (r) => r.property || "" },
     { key: "state", label: "City / state", sort: (r) => (r.state || "") + (r.city || "") },
     { key: "units", label: "Size", sort: (r) => size(r) ?? -1, num: true },
@@ -489,13 +513,16 @@
   const C_COLS = [
     { key: "rank", label: "Rank", sort: (c) => c.rank, num: true },
     { key: "buyer", label: "Buyer", sort: (c) => c.buyer },
-    { key: "homes", label: "Properties on the list", sort: (c) => c.homes_in_list, num: true },
+    { key: "homes", label: "Homes acquired (36 mo)", sort: (c) => c.homes_in_list, num: true },
     { key: "examples", label: "Examples" },
     { key: "source", label: "Source" },
   ];
+  function listRank(r) {             // List A / B: position in that list (its own display order)
+    return (S.tab === "A" && r.rank_a) || (S.tab === "B" && r.rank_b) || r.rank;
+  }
   function cell(col, r) {
     switch (col.key) {
-      case "rank": return el("td", { class: "num rank", text: String(r.rank) });
+      case "rank": return el("td", { class: "num rank", text: String(listRank(r)) });
       case "property": return el("td", { class: "prop", text: r.property || "" });
       case "state": return el("td", {}, place(r) || nf());
       case "care": return el("td", {}, careText(r) || nf());
@@ -526,7 +553,7 @@
     const p = rowProps(r, i);
     p.class = "lead" + (i === S.sel ? " sel" : ""); p.role = "button"; p["aria-label"] = "Open lead " + r.rank + ": " + r.property;
     return el("article", p,
-      el("span", { class: "rank", text: String(r.rank) }),
+      el("span", { class: "rank", text: String(listRank(r)) }),
       el("div", { class: "main" }, el("h3", { text: r.property || "" }), metaLine(r), el("p", { class: "why", text: whyShort(r) })),
       el("div", { class: "status" }, stageMark(r), buyerLine(r)),
       scoreMark(r.score));
@@ -576,7 +603,8 @@
     if (node) { node.focus({ preventScroll: true }); node.scrollIntoView({ block: "nearest" }); }
   }
 
-  /* ---------- 3. Buyers: who is taking these properties over ---------- */
+  /* ---------- Buyers: who is taking these properties over ---------- */
+  const B_SECTIONS = [["confirmed", "Named"], ["candidate", "Candidate · not final"], ["inferred", "Unverified"]];
   function groupBuyers() {
     const m = new Map();
     for (const r of S.data.items) {
@@ -590,7 +618,6 @@
       g.repeat = S.repeat.get(g.name.trim().toLowerCase()) || null;
       g.leads.sort((a, b) => a.rank - b.rank);
       g.group = ["confirmed", "candidate", "inferred"].find((k) => g.groups[k]) || "inferred";
-      g.mixed = Object.keys(g.groups).length > 1;
       g.states = [...new Set(g.leads.map((r) => r.state).filter(Boolean))].sort();
       g.care = [...new Set(g.leads.flatMap((r) => r.care_types))];
       const bd = (g.leads.find((r) => (r.breakdown || {}).buyer_type) || {}).breakdown || {};
@@ -600,51 +627,69 @@
     return out.sort((a, b) => b.leads.length - a.leads.length || a.leads[0].rank - b.leads[0].rank);
   }
   function buildBuyers() {
-    $("b-status").replaceChildren(option("", "Any status"), option("confirmed", "Named"), option("candidate", "Candidate (not final)"), option("inferred", "Unverified"));
+    $("b-status").replaceChildren(option("", "All groups"), ...B_SECTIONS.map(([k, l]) => option(k, l)), option("C", "List C · repeat buyers"));
     for (const id of ["b-search", "b-status"]) $(id).addEventListener("input", renderBuyers);
     renderBuyers();
   }
   function leadLink(r, ctx) {
     return el("button", { class: "leadlink", type: "button", onclick: (e) => openPanel(r, e.currentTarget, ctx) },
       el("span", { class: "rk", text: String(r.rank) }), el("span", { class: "nm", text: r.property || "" }),
-      el("span", { class: "pl", text: place(r) }), el("span", { class: "st", text: STAGE_LABEL[r.stage] || "" }));
+      el("span", { class: "pl", text: [cityName(r.city), r.state].filter(Boolean).join(", ") }), el("span", { class: "st", text: STAGE_LABEL[r.stage] || "" }));
+  }
+  function buyerBlock(g) {
+    const n = g.leads.length, SHOW = 3;
+    const states = g.states.length > 6 ? plural(g.states.length, "state") : g.states.join(", ");
+    return el("article", { class: "buyer-block" },
+      el("h3", { text: g.name }),
+      el("p", { class: "b-meta" }, plural(n, "lead"), states ? " · " + states : "", g.care.length ? " · " + g.care.join(" / ") : "", g.type ? " · " + g.type : "",
+        g.repeat ? " · List C: " + plural(g.repeat.acquisitions_36mo ?? g.repeat.homes_in_list, "home") + " acquired" : "",
+        g.insider ? [" ", el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." })] : null),
+      el("div", { class: "leadlinks" }, g.leads.slice(0, SHOW).map((r) => leadLink(r, g.leads))),
+      n > SHOW ? el("details", { class: "more" }, el("summary", { text: "All " + fmtInt(n) + " leads" }), el("div", { class: "leadlinks" }, g.leads.slice(SHOW).map((r) => leadLink(r, g.leads)))) : null);
+  }
+  function repeatBlock(c) {
+    const u = safeUrl(c.public_source_link), homes = c.acquisitions_36mo ?? c.homes_in_list;
+    return el("article", { class: "buyer-block" },
+      el("h3", { text: c.buyer || "" }),
+      el("p", { class: "b-meta" }, homes != null ? plural(homes, "home") + " acquired in 36 months" : ["homes acquired ", nf()],
+        c.buyer_type && c.buyer_type !== "NOT FOUND" ? " · " + pretty(c.buyer_type) : "", c.latest_date && c.latest_date !== "NOT FOUND" ? " · latest " + fmtDate(c.latest_date) : "",
+        u ? [" · ", ext(u, hostOf(u))] : null),
+      c.example_homes ? el("p", { class: "b-ex", text: c.example_homes }) : null);
   }
   function renderBuyers() {
-    const q = $("b-search").value.trim().toLowerCase(), st = $("b-status").value;
-    const rows = S.buyers.filter((g) => (!st || g.group === st) && (!q || g.name.toLowerCase().includes(q) || g.leads.some((r) => (r.property || "").toLowerCase().includes(q))));
-    $("b-count").textContent = (rows.length === S.buyers.length ? fmtInt(rows.length) : fmtInt(rows.length) + " of " + fmtInt(S.buyers.length)) +
-      " buyers tied to " + plural(rows.reduce((a, g) => a + g.leads.length, 0), "lead") + ", most leads first";
-    $("buyers").replaceChildren(...rows.map((g) => {
-      const n = g.leads.length, SHOW = 4;
-      const more = n > SHOW ? el("details", { class: "more" }, el("summary", { text: "Show all " + fmtInt(n) + " leads" }),
-        el("div", { class: "leadlinks" }, g.leads.slice(SHOW).map((r) => leadLink(r, g.leads)))) : null;
-      return el("article", { class: "buyer-row" },
-        el("div", { class: "b-head" },
-          el("h3", { text: g.name }),
-          el("p", { class: "b-status" }, buyerChip(g.group), g.insider ? el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." }) : null,
-            g.type ? el("span", { class: "muted", text: g.type }) : null),
-          g.group === "candidate" ? el("p", { class: "caveat", text: "Proposed or stalking-horse bidder. Not final: another bidder may win." }) : null),
-        el("dl", { class: "b-facts" },
-          el("div", {}, el("dt", { text: n === 1 ? "Lead" : "Leads" }), el("dd", { class: "big", text: fmtInt(n) })),
-          el("div", {}, el("dt", { text: g.states.length === 1 ? "State" : "States" }), el("dd", {}, g.states.length ? (g.states.length > 8 ? g.states.slice(0, 8).join(", ") + " +" + (g.states.length - 8) : g.states.join(", ")) : nf())),
-          el("div", {}, el("dt", { text: "Care" }), el("dd", {}, g.care.length ? g.care.join(" / ") : nf())),
-          g.repeat ? el("div", {}, el("dt", { text: "Repeat buyer" }), el("dd", {}, plural(g.repeat.homes_in_list, "property", "properties") + " on record ",
-            safeUrl(g.repeat.public_source_link) ? ext(g.repeat.public_source_link, "source") : null)) : null),
-        el("div", { class: "b-leads" }, el("div", { class: "leadlinks" }, g.leads.slice(0, SHOW).map((r) => leadLink(r, g.leads))), more));
-    }));
-    $("b-empty").classList.toggle("hidden", rows.length > 0);
+    const q = $("b-search").value.trim().toLowerCase(), st = $("b-status").value, sum = S.data.summary || {};
+    const match = (g) => !q || g.name.toLowerCase().includes(q) || g.leads.some((r) => (r.property || "").toLowerCase().includes(q));
+    const sections = [];
+    for (const [key, label] of B_SECTIONS) {
+      if (st && st !== key) continue;
+      const rows = S.buyers.filter((g) => g.group === key && match(g));
+      if (rows.length) sections.push({ id: "b-" + key, label, n: rows.length, unit: plural(rows.length, "buyer").replace(/^[\d,]+ /, ""), tip: BUYER_TIP[key], kids: rows.map(buyerBlock) });
+    }
+    if (!st || st === "C") {
+      const all = S.data.list_c || [], rows = all.filter((c) => !q || [c.buyer, c.example_homes].join(" ").toLowerCase().includes(q));
+      const CAP = 25;
+      if (rows.length) sections.push({ id: "b-C", label: "List C · repeat buyers", n: q ? rows.length : sum.list_c_buyers ?? all.length, unit: "buyers",
+        tip: "List C: buyers that took over two or more homes in the last 36 months, from public ownership records. " +
+          (sum.list_c_linked_leads != null ? fmtInt(sum.list_c_linked_leads) + " of today's leads are linked to one of them." : ""),
+        kids: [...rows.slice(0, CAP).map(repeatBlock), rows.length > CAP ? el("details", { class: "more" }, el("summary", { text: "All " + fmtInt(rows.length) + " repeat buyers" }), rows.slice(CAP).map(repeatBlock)) : null] });
+    }
+    $("b-jump").replaceChildren(...sections.map((s) => el("a", { class: "jump", href: "#" + s.id, onclick: (e) => { e.preventDefault(); $(s.id).scrollIntoView({ block: "start" }); } },
+      s.label, el("b", { text: fmtInt(s.n) }))));
+    $("buyers").replaceChildren(...sections.map((s) => el("section", { class: "b-section", id: s.id, "aria-label": s.label },
+      el("h2", { class: "b-sec-head" }, el("span", { class: "t", text: s.label }), el("span", { class: "n", text: fmtInt(s.n) + " " + s.unit }), s.tip ? info(s.tip, "", "b-info") : null),
+      s.kids.filter(Boolean))));
+    $("b-empty").classList.toggle("hidden", sections.length > 0);
   }
 
   /* ---------- the map is the product: L0 USA > L1 state > L2 city > L3 property card > L4 research ----------
      The URL hash holds the whole state (#/map/PA/pittsburgh/r4/research?l=AB), so Back and Esc go up one level. */
   const M = { layers: new Set(), st: "", city: "", lead: null, research: false, k: 1, ready: false, rows: [] };
   const NOSTATE = "--", NOCITY = "-";
-  const LAYERS = [["A", "Live deals"], ["B", "Pre-sale"], ["C", "Repeat buyers"]];
-  const leadKey = (r) => "r" + r.rank;
+  const LAYERS = [["A", "Live deals"], ["B", "Pre-sale"]];
+  const leadKey = (r) => (r.lead_id ? String(r.lead_id) : "r" + r.rank);     // stable id from the snapshot; rank only if it is missing
   const cityKey = (r) => (r.city ? r.city.trim().toLowerCase() : NOCITY);
   const cityName = (c) => String(c || "").toLowerCase().replace(/(^|[\s\-'.(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
-  const isRepeat = (r) => !!r.buyer && S.repeat.has(r.buyer.trim().toLowerCase());
-  const inLayers = (r) => !M.layers.size || [...M.layers].some((l) => (l === "C" ? isRepeat(r) : r.lists.includes(l)));
+  const inLayers = (r) => !M.layers.size || [...M.layers].some((l) => r.lists.includes(l));
   function mapHash(o) {
     o = Object.assign({ st: M.st, city: M.city, lead: M.lead, research: false, layers: M.layers }, o);
     let h = "#/map";
@@ -659,7 +704,7 @@
     const [path, query] = h.replace(/^#\/?(map)?\/?/, "").split("?");
     let seg = [];
     try { seg = path ? path.split("/").map(decodeURIComponent) : []; } catch (e) { seg = []; }
-    M.layers = new Set((((/(?:^|&)l=([ABC]+)/.exec(query || "")) || [])[1] || "").split("").filter(Boolean));
+    M.layers = new Set((((/(?:^|&)l=([AB]+)/.exec(query || "")) || [])[1] || "").split("").filter(Boolean));
     M.st = seg[0] && (STATES[seg[0]] || seg[0] === NOSTATE) ? seg[0] : "";
     M.city = M.st ? seg[1] || "" : "";
     M.lead = M.city && seg[2] ? S.byRank.find((r) => leadKey(r) === seg[2]) || null : null;
@@ -724,17 +769,20 @@
     const named = rows.filter((r) => r.buyer_group === "confirmed").length;
     const mid = level === 0 ? [new Set(rows.map((r) => r.state).filter(Boolean)).size, "states"]
       : level === 1 ? [new Set(rows.map(cityKey)).size, "cities"] : [rows.filter((r) => phoneText((r.contact || {}).phone)).length, "with phone"];
-    $("hud").replaceChildren(...[[rows.length, rows.length === 1 ? "lead" : "leads"], mid, [named, "buyer named"]].map(([n, label]) =>
+    const nLeads = level === 0 && !M.layers.size ? SUM("leads", rows.length) : rows.length;
+    $("hud").replaceChildren(...[[nLeads, nLeads === 1 ? "lead" : "leads"], mid, [named, "buyer named"]].map(([n, label]) =>
       el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))));
 
     // layer toggles
     const base = M.st ? S.byRank.filter((r) => (M.st === NOSTATE ? !r.state : r.state === M.st) && (!M.city || cityKey(r) === M.city)) : S.byRank;
     $("layers").replaceChildren(...LAYERS.map(([key, label]) => {
-      const on = M.layers.has(key), n = base.filter((r) => (key === "C" ? isRepeat(r) : r.lists.includes(key))).length;
+      const on = M.layers.has(key), n = M.st ? base.filter((r) => r.lists.includes(key)).length : SUM(key === "A" ? "list_a" : "list_b", base.filter((r) => r.lists.includes(key)).length);
       return el("button", { class: "layer", type: "button", "aria-pressed": String(on), "aria-label": "List " + key + ", " + label + ": " + n + " leads",
         onclick: () => { const next = new Set(M.layers); if (on) next.delete(key); else next.add(key); go(mapHash({ layers: next, lead: null })); } },
         el("b", { text: key }), el("span", { text: label }), el("i", { text: fmtInt(n) }));
-    }));
+    }), el("a", { class: "layer link", href: "#/buyers", "aria-label": "List C: " + SUM("list_c_buyers", (S.data.list_c || []).length) + " repeat buyers, shown in Buyers",
+      onclick: () => { $("b-status").value = "C"; renderBuyers(); } },
+      el("b", { text: "C" }), el("span", { text: fmtInt(SUM("list_c_buyers", (S.data.list_c || []).length)) + " buyers" }), el("i", { "aria-hidden": "true", text: "→" })));
 
     if (M.ready) drawMap(all, stRows, rows, level);
     renderSide(stRows, rows, level);
@@ -758,11 +806,11 @@
     const pins = level >= 2 ? rows.map((r) => [r, coord(r)]).filter((x) => x[1]) : [];
     let b = null;
     if (pins.length) {
-      const xs = pins.map((p) => p[1][0]), ys = pins.map((p) => p[1][1]), pad = 16;
+      const xs = pins.map((p) => p[1][0]), ys = pins.map((p) => p[1][1]), pad = 10;     // never closer than about a 60-mile window: positions are ZIP centres
       b = [[Math.min(...xs) - pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.max(...ys) + pad]];
     } else if (feat) b = M.path.bounds(feat);
     let k = 1, tx = 0, ty = 0;
-    if (b) { k = Math.min(26, 0.88 / Math.max((b[1][0] - b[0][0]) / W, (b[1][1] - b[0][1]) / H));
+    if (b) { k = Math.min(40, 0.88 / Math.max((b[1][0] - b[0][0]) / W, (b[1][1] - b[0][1]) / H));
       tx = W / 2 - (k * (b[0][0] + b[1][0])) / 2; ty = H / 2 - (k * (b[0][1] + b[1][1])) / 2; }
     M.k = k;
     M.zoom.transition().duration(REDUCED ? 0 : 750).ease(d3.easeCubicInOut).attr("transform", "translate(" + tx + "," + ty + ") scale(" + k + ")");
@@ -799,14 +847,21 @@
       const rings = M.marks.selectAll("g.ring").data([5, 15, 30]).join("g").attr("class", "ring").attr("transform", "translate(" + cx + "," + cy + ")");
       rings.append("circle").attr("r", (d) => d * mile);
       rings.append("text").attr("y", (d) => -d * mile - 4 * u).attr("font-size", 11 * u).text((d) => d + " mi");
-      const rad = (r) => (size(r) ? Math.max(5, Math.min(18, 2.2 + Math.sqrt(size(r)) * 0.95)) : 5) * u;
+      const rad = (r) => (size(r) ? Math.max(4, Math.min(12, 1.5 + Math.sqrt(size(r)) * 0.62)) : 4) * u;
+      // Leads in one ZIP code share one centre point. Fan them out a few screen pixels so each can be clicked;
+      // the offset is a display device, not a location (the legend says positions are approximate).
+      const spot = d3.groups(pins, (p) => p[1][0].toFixed(3) + "," + p[1][1].toFixed(3));
+      for (const [, grp] of spot) grp.forEach((p, i) => { const n2 = grp.length, a = (2 * Math.PI * i) / n2, d = n2 > 1 ? (10 + 2.5 * n2) * u : 0;
+        p[2] = [p[1][0] + d * Math.cos(a), p[1][1] + d * Math.sin(a)]; });
+      M.marks.selectAll("circle.zip").data(spot.filter(([, grp]) => grp.length > 1)).join("circle").attr("class", "zip")
+        .attr("cx", (d) => d[1][0][1][0]).attr("cy", (d) => d[1][0][1][1]).attr("r", (d) => (23 + 2.5 * d[1].length) * u);
       const sorted = pins.slice().sort((a, b2) => (size(b2[0]) || 0) - (size(a[0]) || 0));          // small pins stay on top
       const g = M.marks.selectAll("g.pin").data(sorted).join("g").attr("class", (d) => "pin" + (d[0] === M.lead ? " sel" : "") + (size(d[0]) ? "" : " nosize"))
-        .attr("transform", (d) => "translate(" + d[1][0] + "," + d[1][1] + ")").attr("tabindex", 0).attr("role", "button")
+        .attr("transform", (d) => "translate(" + d[2][0] + "," + d[2][1] + ")").attr("tabindex", 0).attr("role", "button")
         .attr("aria-label", (d) => d[0].property + ", " + (sizeText(d[0]) || "size not found") + ", " + (STAGE_LABEL[d[0].stage] || ""))
         .on("click", (ev, d) => { ev.stopPropagation(); hideTip(); go(leadHash(d[0])); })
         .on("keydown", (ev, d) => key(ev, () => go(leadHash(d[0]))))
-        .on("mousemove", (ev, d) => showTip(d[0].property + " · " + (sizeText(d[0]) || "size not found"), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip);
+        .on("mousemove", (ev, d) => showTip(d[0].property + " · " + (sizeText(d[0]) || "size not found") + (d[0].coord_source === "zip_centroid" ? " · approx. position" : ""), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip);
       g.filter((d) => pings(d[0])).append("circle").attr("class", "ping").attr("r", (d) => rad(d[0])).attr("stroke", (d) => stageColor(d[0])).attr("stroke-width", 1.5 * u);
       g.append("circle").attr("class", "dot").attr("r", (d) => rad(d[0])).attr("fill", (d) => stageColor(d[0])).attr("stroke-width", (d) => (d[0] === M.lead ? 3 : 1.25) * u);
     }
@@ -818,11 +873,13 @@
     note.replaceChildren("Map positions ", nf());
 
     // legend: one row of marks, no sentences
+    const approx = stRows.some((r) => r.coord_source === "zip_centroid" && coord(r));
+    const approxNote = approx ? el("span", { class: "lg approx", text: "Positions = ZIP-code centres (approximate)", "data-tip": "Each lead is placed at the centre of its ZIP code, not at its street address. Leads without a known ZIP are in the list only." }) : null;
     const ramp = el("span", { class: "ramp", "aria-hidden": "true" }, [0.05, 0.25, 0.5, 0.75, 1].map((t) => el("i", { style: "background:" + color(t * max) })));
     $("legend").replaceChildren(...(M.hasPins
       ? [el("span", { class: "lg" }, STAGES.map((s) => el("span", { class: "lg-item" }, el("i", { class: "dotkey", style: "background:" + token("--stage-" + s) }), STAGE_LABEL[s]))),
-         el("span", { class: "lg" }, el("i", { class: "dotkey s" }), el("i", { class: "dotkey l" }), "size = units / beds")]
-      : [el("span", { class: "lg" }, "1", ramp, fmtInt(max) + " leads")]));
+         el("span", { class: "lg" }, el("i", { class: "dotkey s" }), el("i", { class: "dotkey l" }), "size = units / beds"), approxNote]
+      : [el("span", { class: "lg" }, "1", ramp, fmtInt(max) + " leads"), M.hasBubbles ? approxNote : null].filter(Boolean)));
   }
 
   function leadRow(r) {
@@ -1110,7 +1167,7 @@
     const header = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds", "signals",
       "stage", "buyer", "buyer_status", "score", "why", "sources", "not_found"];
     const lines = S.rows.map((r) => { const c = r.contact || {};
-      return [r.lists.join("/"), r.rank, r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
+      return [r.lists.join("/"), listRank(r), r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
         phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
         r.signals.join(";"), r.stage, r.buyer || "NOT FOUND", r.buyer_group, r.score, whyShort(r), r.sources.join(" "), r.not_found.join(";")]; });
     saveCsv(header, lines, "deal-radar-" + (S.tab === "all" ? "leads" : "list-" + S.tab.toLowerCase()) + (S.state ? "-" + S.state : "") + ".csv");
