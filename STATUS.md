@@ -1,6 +1,6 @@
-# Status: pipeline build (branch `aiden/pipeline-kit`)
+# Status: pipeline build (branch `aiden/wave4-fixes`)
 
-_Last updated: Nov 10, 2026 (Wave 3.5). Nothing is pushed to GitHub yet._
+_Last updated: Nov 10, 2026 (Wave 4 freeze). Wave 4 is not pushed yet._
 
 | Wave / gate | State |
 |---|---|
@@ -9,7 +9,7 @@ _Last updated: Nov 10, 2026 (Wave 3.5). Nothing is pushed to GitHub yet._
 | Wave 2: facility / company hubs + AI extraction | ✅ Gate 2 approved |
 | Wave 3: signals, buyers, scoring, lead list | ⏳ **At Gate 3**: decisions 1b / 2d and the top-5 hand check applied |
 | Wave 3.5: AL sources, licensed loan facts, takeovers | ✅ done (Nov 10) |
-| Wave 4: QA + backtest | backtest script ready (`python -m eval.backtest`); **not run: no past-deals file yet** |
+| Wave 4: QA + backtest + fixes | ✅ backtest run (results kept private); fixes below; data frozen Nov 10 |
 
 ## Requirement #1 (AI extraction accuracy)
 **Req #1 not fully met; stopped by decision. Holdout v1 (16 scored): Sonnet buyer 12/12, 0 buyer hallucinations, 9/16 correct ignoring dates/amounts. Accepted for MVP.**
@@ -30,6 +30,19 @@ _Last updated: Nov 10, 2026 (Wave 3.5). Nothing is pushed to GitHub yet._
 - **Database:** 152 MB of the 500 MB plan (was 395.5 MB).
 - **Tests:** 205 passing.
 
+## Wave 4 (Nov 10): fixes and data freeze
+**Public repo: no licensed facts and no past-deal details here; backtest results stay in `eval/private/`.**
+- **Backtest top line:** property hits 0/3, buyer hits 3/3, median buyer lead time 538 days. The roadmap for the property misses (court-to-home links, a local-press receivership source, one state roster) is in the private backtest file.
+- **Lists now (public view):** main list 535 homes (598 internal), List A 253 live deals with a named buyer, List B 218 pre-sale distress, List C 30 repeat-buyer / takeover firms. Assisted-living share: 11.4% public, 20.4% internal.
+- **Public sources for hidden leads:** public court filings can be entered by hand (`config/court_facts.yaml` `cases`); a debtor trust ("... DST") now links to the home its master tenant ("... MT, LLC") is licensed under; homes named in public sale notices are linked. 16 of 17 hidden top-50 bankruptcy leads became public. Hand-entered homes whose state is deduced from the city carry the flag `state_inferred`.
+- **Buyers:** an OpCo / PropCo buyer is matched to its parent operator by brand (`brand_match`, inferred); a debtor or its affiliate is never its own home's buyer; a buyer with the debtor's brand is flagged `buyer_possible_insider`; stalking-horse bidders are `candidate` until a public order names the final buyer.
+- **Roundup articles** ("dealbooks") are split into one item per deal before extraction (976 items, $1.44). A "building" that is only a city name is never matched, and a news operator change or buyer needs a confirmed building link.
+- **Public ranking:** public score without licensed points; name-only court matches are kept out of the public top 50 too.
+- **Numbers:** database 202 MB; tests 244 passing.
+- **Safety:** licensed unit counts stay in the private tables; the web client stops instead of sleeping when a server asks to wait more than 5 minutes.
+- **AI provider:** `LLM_PROVIDER` (anthropic | gemini, default anthropic). Production stays on Sonnet until another model matches it on the holdout (`python -m eval.extraction.compare_models`).
+- **Not done:** receivership / deed-in-lieu news query (GDELT rate-limited and returned nothing; reverted). Google News stays manual (robots.txt).
+
 ## Wave 3.5, part 3 (Nov 10)
 **Public repo: no licensed facts here.**
 - **History:** the two Wave 3.5 commits were squashed before any push. A full-history scan found no licensed facts and no Bloomfield-confidential facts: the Bloomfield mentions are rules ("past deals never go in the repo"), and no private file was ever tracked.
@@ -37,7 +50,7 @@ _Last updated: Nov 10, 2026 (Wave 3.5). Nothing is pushed to GitHub yet._
   - `licensed_only` leads (their public signals alone would not make the main list) are excluded.
   - `licensed_private` leads are masked: public distress types and stage, buyer NOT FOUND when the buyer is licensed, a cut-down score_breakdown, web-link sources only.
   - Internal files are named `INTERNAL_*` and keep everything for ranking and the backtest.
-  - The public score is the internal score (a number; it may include licensed points).
+  - The public score comes from scoring the lead without licensed signals, buyers or sizes (Wave 4); it no longer includes licensed points.
 - **Licensed bankruptcy-sale buyers:** per-community buyers load from a private CSV into `private.licensed_buyer` (`python -m src.discover.licensed.buyers`). Settings, dates and hand overrides sit in a private yaml.
   - 24 rows: 18 communities linked (2 matched, 1 hand-checked override, 15 new facilities); 6 without a state are not linked.
   - Each linked community gets a `court_sale_process` signal and a named buyer, tagged `licensed:provider`.

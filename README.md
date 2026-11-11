@@ -228,6 +228,18 @@ Based on Bloomfield's examples and the 3 past deals.
 
 **Run it:** `python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt`, copy `.env.example` to `.env` and fill it in, then `.venv/bin/pytest -q`.
 
+**Pipeline commands (in order):**
+| Step | Command |
+|---|---|
+| Collect | `python -m src.discover.<source>` (cms, hud, courts, news, licenses); public court filings our searches miss: `python -m src.discover.courts --source court_manual` (from `config/court_facts.yaml`) |
+| Split roundup articles | `python -m src.extract.split` (one item per deal in "dealbook" articles) |
+| Read articles with AI | `python -m src.extract` (Claude Sonnet; `LLM_PROVIDER` in `.env` selects the provider, and a new model must pass `python -m eval.extraction.compare_models` before it is used for production) |
+| Match to buildings / companies | `python -m src.enrich` |
+| Score + lists | `python -m src.score`, then `python -m src.score.takeovers` |
+| Demo exports | `python -m src.score.final_exports` → `output/list_A_live_deals.csv`, `list_B_presale_distress.csv`, `list_C_repeat_buyers.csv`, `top_20_for_handcheck.csv` |
+
+Bloomfield-facing outputs use the public view only; licensed facts stay in the private schema and in `INTERNAL_*` files.
+
 > 🔒 **Do not commit** Bloomfield's deal details, emails, or anything marked confidential. Keep `.env` and API keys out of git.
 
 ## 13. Open Questions
