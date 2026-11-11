@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-DEFAULT_SNAPSHOT = "/etc/secrets/site_snapshot.json"
+DEFAULT_SNAPSHOT = "/etc/secrets/site_snapshot.b64"
 NF = "NOT FOUND"
 LEAD_COLS = ["list", "rank", "property", "city", "state", "care_type", "units_or_beds", "signals", "stage", "buyer",
              "buyer_status", "score", "flags", "public_source_link", "not_found"]
@@ -36,7 +36,7 @@ STATIC_FILES = {"app.js": "application/javascript; charset=utf-8", "app.css": "t
 CSP = ("default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; "
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'none'")
-SNAPSHOT_KEYS = ("generated_at", "counts", "items", "list_c")
+SNAPSHOT_KEYS = ("generated_at", "counts", "items", "list_c", "explore", "funnel", "sources_table", "rules")
 OPEN_PATHS = {"/healthz", "/robots.txt"}
 
 
@@ -52,10 +52,36 @@ def site_password() -> str:
 
 
 def load_snapshot(path: str | None = None) -> dict:
+    """Plain JSON (local preview) or the packed upload (gzip + base64 text, see src.web.snapshot.packed)."""
+    import gzip
     p = Path(path or os.environ.get("SNAPSHOT_PATH") or DEFAULT_SNAPSHOT)
     if not p.exists():
         raise ConfigError(f"snapshot file not found: {p}")
-    return json.loads(p.read_text(encoding="utf-8"))
+    raw = p.read_bytes().strip()
+    snap = json.loads(raw if raw[:1] == b"{" else gzip.decompress(base64.b64decode(raw)))
+    return with_lists(snap)
+
+
+def flat_row(r: dict, lst: str) -> dict:
+    size = r.get("units") or r.get("beds")
+    out = {"list": lst, "rank": r.get("rank"), "property": r.get("property"), "city": r.get("city") or NF,
+           "state": r.get("state") or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
+           "units_or_beds": size or NF, "signals": ", ".join(r.get("signals") or []) or NF,
+           "stage": r.get("stage") or NF, "buyer": r.get("buyer") or NF, "buyer_status": r.get("buyer_status") or NF,
+           "score": r.get("score"), "flags": ";".join(r.get("flags") or []),
+           "public_source_link": (r.get("sources") or [NF])[0]}
+    out["not_found"] = ";".join(k for k, v in out.items() if v == NF)
+    return out
+
+
+def with_lists(snap: dict) -> dict:
+    """Rebuild the flat lists (JSON / CSV endpoints) from the items when the packed upload left them out."""
+    items = snap.get("items") or []
+    snap.setdefault("leads", [flat_row(r, "all") for r in items])
+    snap.setdefault("list_a", [flat_row(r, "A") for r in items if "A" in (r.get("lists") or [])])
+    snap.setdefault("list_b", [flat_row(r, "B") for r in items if "B" in (r.get("lists") or [])])
+    snap.setdefault("top20", [flat_row(r, "top20") for r in items[:20]])
+    return snap
 
 
 def authorized(header: str | None, password: str) -> bool:
@@ -84,8 +110,15 @@ def make_handler(snap: dict, password: str):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, body: str, ctype: str, extra=None):
             b = body.encode("utf-8")
+            gz = len(b) > 8192 and "gzip" in (self.headers.get("Accept-Encoding") or "")
+            if gz:                                   # the snapshot JSON is ~3.5 MB raw, ~0.3 MB gzipped
+                import gzip
+                b = gzip.compress(b, 6)
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            if gz:
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(b)))
             self.send_header("X-Robots-Tag", "noindex, nofollow")
             self.send_header("X-Content-Type-Options", "nosniff")

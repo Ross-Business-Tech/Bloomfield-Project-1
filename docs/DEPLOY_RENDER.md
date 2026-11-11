@@ -11,6 +11,8 @@
   **Secret File**.
 - Every page and download needs a password (HTTP basic auth, `SITE_PASSWORD`). Pages are `noindex`, and
   `/robots.txt` disallows all crawling. Only `/healthz` (returns "ok", no data) and `/robots.txt` are open.
+- Pages: Dashboard, How it works (pipeline, sources, scoring rules, NOT FOUND policy), Funnel (counts and the rule
+  at each step), Explore (the watch list: public-source rows only, with the reason each is not on the main list).
 - Lists: **A** live deals with a named buyer, **B** pre-sale distress with no buyer, **C** buyers named on 2+ homes in
   this list (built from public-view fields only; the fuller repeat-buyer / takeover list uses internal tables and is
   left out).
@@ -25,17 +27,21 @@
 
 ## Steps
 1. **Make the snapshot (team laptop with the pipeline set up):**
-   `.venv/bin/python -m src.web.snapshot` → `output/site_snapshot.json` (plus `site_list_a/b/c.csv`). `output/` is
-   gitignored; never `git add -f` it. Past-deal homes are left out using `eval/private/exclude_facilities_PRIVATE.txt`.
+   `.venv/bin/python -m src.web.snapshot` → `output/site_snapshot.json` (readable, for local preview) and
+   `output/site_snapshot.b64` (the same data packed: gzip + base64 text, about 0.3 MB). **Upload the `.b64` file.**
+   Render allows **1 MB in total for all Secret Files of a service**; the script stops if the packed file would pass
+   0.95 MB. `output/` is gitignored; never `git add -f` it. Excluded homes are listed in
+   `eval/private/exclude_facilities_PRIVATE.txt`.
 2. **Check it:** `.venv/bin/pytest -q tests/web` (no licensed fields, no past-deal homes, password on every page).
    Optional local preview: `SITE_PASSWORD=<something> SNAPSHOT_PATH=output/site_snapshot.json PORT=8765
    .venv/bin/python -m src.web.server`, then open http://localhost:8765 (any user name, that password).
 3. **Render account and repo (team owner):** sign in to Render, *New → Blueprint*, connect the GitHub repo and pick
    the `development` branch (`render.yaml` is read from there). Render needs access to the GitHub repo; ask the repo
    owner if it cannot see it.
-4. **Secret File:** in the service, *Environment → Secret Files → Add Secret File*. Filename `site_snapshot.json`,
-   contents = paste the whole file from step 1. Render mounts it at `/etc/secrets/site_snapshot.json` (already set as
-   `SNAPSHOT_PATH` in `render.yaml`). Secret files are not stored in the repo or in build logs.
+4. **Secret File:** in the service, *Environment → Secret Files → Add Secret File*. Filename `site_snapshot.b64`,
+   contents = paste the whole `.b64` file from step 1 (one long line of text). Render mounts it at
+   `/etc/secrets/site_snapshot.b64` (already set as `SNAPSHOT_PATH` in `render.yaml`). Secret files are not stored
+   in the repo or in build logs.
 5. **Env var:** *Environment → Add Environment Variable* `SITE_PASSWORD` = a strong password (8+ characters). Share it
    with the team out of band (not in GitHub, not in the repo).
 6. **Deploy:** `autoDeploy` is off; press *Manual Deploy*. Health check `/healthz`. Open the site: the browser asks

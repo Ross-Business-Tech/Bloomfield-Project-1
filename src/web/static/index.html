@@ -18,10 +18,16 @@
       <span class="name">Deal Radar</span>
       <span class="asof" id="asof">Loading…</span>
     </div>
+    <nav class="nav" aria-label="Pages">
+      <a href="#/" data-view="dashboard">Dashboard</a>
+      <a href="#/how" data-view="how">How it works</a>
+      <a href="#/funnel" data-view="funnel">Funnel</a>
+      <a href="#/explore" data-view="explore">Explore</a>
+    </nav>
     <button class="btn primary" id="download" type="button">Download CSV</button>
   </header>
 
-  <main class="page">
+  <main class="page view" id="view-dashboard">
     <section class="kpis" id="kpis" aria-label="Key numbers"></section>
 
     <section class="card map-card">
@@ -69,6 +75,54 @@
     </section>
     <p class="foot muted">Public sources only. Each lead links to the filings, data sets and articles it rests on.
       Fields shown as <span class="nf">NOT FOUND</span> were not stated in any source.</p>
+  </main>
+
+  <main class="page view hidden" id="view-how">
+    <section class="card prose">
+      <h1>How it works</h1>
+      <p class="lede">Deal Radar reads public records and news about senior housing, links every fact to the building it
+        is about, and ranks the buildings that show distress. Every lead links back to its sources.</p>
+      <div class="pipeline" id="pipeline" aria-label="Pipeline"></div>
+    </section>
+    <section class="card prose"><h2>Sources</h2>
+      <p class="muted">Public sources only. Counts are what the latest run holds.</p>
+      <div class="table-wrap plain"><table id="sources-table"></table></div>
+    </section>
+    <section class="card prose"><h2>How a building is scored</h2><div id="rules"></div></section>
+    <section class="card prose"><h2>NOT FOUND, never guessed</h2>
+      <p>A fact is shown only when a source states it. Anything no source states is written
+        <span class="nf">NOT FOUND</span> (highlighted amber) instead of being estimated: a missing buyer, unit count,
+        city or link stays NOT FOUND until a source names it. Inferred facts (a parent company matched by brand, a state
+        deduced from a city) are labelled as inferred.</p>
+      <p><strong>Public sources only.</strong> Everything on this site comes from public filings, government data sets
+        and published articles, and each lead lists its links. Leads whose evidence is not public are not shown.</p>
+    </section>
+  </main>
+
+  <main class="page view hidden" id="view-funnel">
+    <section class="card prose">
+      <h1>From every building to a short list</h1>
+      <p class="lede">Each step applies one rule. The bars are to scale on a log axis so the small steps stay visible.</p>
+      <div id="funnel" class="funnel"></div>
+    </section>
+  </main>
+
+  <main class="page view hidden" id="view-explore">
+    <section class="card list-card">
+      <div class="card-head"><div><h1 class="h2">Explore the watch list</h1>
+        <p class="muted">Buildings with public distress signals that do not (yet) meet the main-list bar. Each row says why.</p></div></div>
+      <div class="filters">
+        <input type="search" id="x-search" placeholder="Search property, city, buyer" aria-label="Search watch list">
+        <select id="x-state" aria-label="State"></select>
+        <select id="x-care" aria-label="Care type"></select>
+        <select id="x-signal" aria-label="Signal"></select>
+        <button class="btn ghost" id="x-reset" type="button">Reset</button>
+      </div>
+      <div class="result-row"><span id="x-count" class="muted"></span></div>
+      <div class="table-wrap"><table id="x-table"><thead id="x-thead"></thead><tbody id="x-tbody"></tbody></table>
+        <div class="empty hidden" id="x-empty"><strong>No rows match these filters.</strong></div></div>
+      <div class="pager" id="x-pager"></div>
+    </section>
   </main>
 
   <div class="scrim hidden" id="scrim"></div>
