@@ -931,6 +931,13 @@ def step_extraction(conn, limit=None) -> dict:
         return {"extractions": 0}
     idx = load_index(conn)
     existing = load_xref(conn, {r["source_id"] for r in rows})
+    # exact name + city + state already in the hub -> that building (an article with no street address otherwise
+    # scores too low and creates a duplicate; e.g. a roundup and its split-out deal item). Ambiguous keys are skipped.
+    exact: dict[tuple, set] = {}
+    for f_ in conn.execute("select facility_id::text, canonical_name, city, state from core.facility "
+                           "where city is not null and state is not null").fetchall():
+        exact.setdefault((normalize_name(f_["canonical_name"]), normalize_name(f_["city"]), f_["state"]), set()).add(
+            f_["facility_id"])
     for r in rows:
         for i, f in enumerate(_fields_list(r["fields"])):
             name, state = clean(f.get("property_name")), state_code(f.get("state"))
@@ -943,6 +950,11 @@ def step_extraction(conn, limit=None) -> dict:
                 continue
             rec = {"name": name, "street": street, "city": city, "state": state, "zip5": clean(f.get("zip5"))}
             key = f"doc:{r['document_id']}" + (f":{i}" if i else "")
+            hit = exact.get((normalize_name(name), normalize_name(city or ""), state), set()) if city else set()
+            if len(hit) == 1 and (r["source_id"], key) not in existing:
+                batch.xrefs.append([next(iter(hit)), r["source_id"], key, "fuzzy", 100, "auto"])   # exact name + city + state
+                existing[(r["source_id"], key)] = {"facility_id": next(iter(hit)), "review_status": "auto"}
+                stats["exact_name_city"] += 1
             fid, status = resolve(batch, idx, existing, r["source_id"], key, rec, stats,
                                   allow_new=bool(street or city),
                                   new_kwargs=dict(name=name, street=street, city=city, state=state,
