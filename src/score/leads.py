@@ -197,6 +197,9 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     for f in ("senior_housing_maybe", "portfolio_link"):
         if f in best.flags:
             flags.append(f)
+    for f in ("borrower_name_mismatch",):            # evidence-level flags from hand-checked public events
+        if any(f in s.flags for s in current) and f not in flags:
+            flags.append(f)
     if (fac.get("beds") or 0) > 300 and "senior_housing_maybe" in flags:
         flags.append("size_check")              # very large + maybe not senior housing: check by hand (no score change)
     if factor(best) != 1.0 or any(factor(s) != 1.0 for s in court):

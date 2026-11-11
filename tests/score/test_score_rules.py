@@ -269,3 +269,12 @@ def test_main_list_needs_three_signals_or_one_hard_event():
     assert score_facility(FAC, capped_ch11, Buyer(), TODAY, frozenset({5})).tier == "main"   # hard event, even capped
     assert score_facility(FAC, two_metrics, Buyer(), TODAY).tier == "watch"
     assert score_facility(FAC, three, Buyer(), TODAY).tier == "main"
+
+
+def test_public_event_needs_a_web_link_and_never_makes_a_buyer(monkeypatch):
+    import pytest
+    from src.score import rules, signals
+    monkeypatch.setattr(rules, "court_facts", lambda: {"public_events": [{"case": "x:1", "signal_type": "foreclosure",
+                                                                         "source_url": "licensed:provider"}]})
+    with pytest.raises(ValueError):
+        signals.public_event_signals(conn=None)
