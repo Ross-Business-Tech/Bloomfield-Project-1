@@ -64,7 +64,7 @@ def test_pages_with_password_are_noindex(site):
     assert "default-src 'self'" in headers["Content-Security-Policy"]
     code, _, body = get(site + "/api/snapshot.json", PW)
     data = json.loads(body)
-    assert code == 200 and set(data) == {"generated_at", "counts", "items", "list_c"}
+    assert code == 200 and set(data) == set(server.SNAPSHOT_KEYS)
     assert {i["property"] for i in data["items"]} == {"<b>Acme Manor</b>", "Birch Home"}   # rendered as text in the UI
     assert get(site + "/static/app.js", PW)[0] == 200 and get(site + "/static/../server.py", PW)[0] == 404
     assert get(site + "/api/list_a.json", PW)[0] == 200
@@ -139,3 +139,146 @@ def test_real_snapshot_from_the_public_view():
 def test_server_has_no_database_or_key_access():
     code = re.sub(r'"""[\s\S]*?"""', "", Path(server.__file__).read_text())
     assert not re.search(r"psycopg|httpx|supabase|SUPABASE|ANTHROPIC|COURTLISTENER|^\s*(from|import) src\.", code, re.M)
+
+
+def test_packed_upload_round_trips_and_stays_under_the_render_limit(tmp_path):
+    snap = snapshot.build(ROWS, {"past-deal"})
+    snap.update(explore=[], funnel=[], sources_table=[], rules={})
+    out = tmp_path / "site_snapshot.json"
+    snapshot.write(snap, out)
+    packed = out.with_suffix(".b64")
+    assert packed.stat().st_size < snapshot.UPLOAD_LIMIT
+    back = server.load_snapshot(str(packed))
+    assert back["counts"] == snap["counts"] and back["list_a"][0]["property"] == "<b>Acme Manor</b>"   # rebuilt
+    assert set(back) >= {"leads", "list_a", "list_b", "top20"}
+
+
+def _private_terms() -> list[str]:
+    """The private term list (eval/private, gitignored): provider names, partner name, past deals. Empty in CI."""
+    p = Path(__file__).resolve().parents[2] / "eval" / "private" / "forbidden_terms.txt"
+    if not p.exists():
+        return []
+    return [t.strip().lower() for t in p.read_text().splitlines() if t.strip() and not t.startswith("#")]
+
+
+def test_sources_table_names_only_public_sources():
+    ids = [s[0] for s in snapshot.SOURCES]
+    assert "licensed_data" not in ids and not any("licensed" in s[0] for s in snapshot.SOURCES)
+    text = json.dumps(snapshot.SOURCES).lower()
+    assert "licensed" not in text
+    assert not [t for t in _private_terms() if t in text]
+
+
+def test_real_extra_pages_have_no_private_traces():
+    """Database + score-run check (skipped offline): Explore, funnel and sources carry no licensed traces and no
+    past-deal homes."""
+    if not snapshot.EXCLUDE_FILE.exists():
+        pytest.skip("no private exclusion list")
+    try:
+        from src.common.db import connect
+        conn = connect()
+    except Exception:
+        pytest.skip("no database connection")
+    with conn:
+        skip = snapshot.excluded()
+        names = {(r["n"].upper(), (r["c"] or "").upper(), r["s"] or "") for r in conn.execute(
+            "select canonical_name n, city c, state s from core.facility where facility_id = any(%s::uuid[])", (list(skip),))}
+        rows = snapshot.watch_rows(names)
+        snap = {"counts": {"leads": 0, "list_a": 0, "list_b": 0, "list_c": 0}}
+        extra = {"explore": rows, "funnel": snapshot.funnel(conn, snap, len(rows)), "sources": snapshot.source_rows(conn),
+                 "rules": snapshot.rules_block()}
+    text = json.dumps({k: v for k, v in extra.items() if k != "explore"}, default=str).lower()
+    assert "licensed" not in json.dumps(extra, default=str).lower()
+    assert not [t for t in _private_terms() if t in text]          # funnel / sources / rules text
+    for n, c, st in names:
+        assert not any(r["property"].upper() == n and (r["city"] or "").upper() == c for r in rows), n
+    assert all(r["sources"] and all(u.startswith("http") for u in r["sources"]) for r in rows)
+    assert all("hard event" in r["reason"] or "broker sale" in r["reason"] for r in rows)
+
+
+def test_start_up_falls_back_to_the_other_snapshot_file(tmp_path, monkeypatch):
+    snap = snapshot.build(ROWS, {"past-deal"})
+    (tmp_path / "site_snapshot.json").write_text(json.dumps(snap))
+    monkeypatch.setenv("SNAPSHOT_PATH", str(tmp_path / "site_snapshot.b64"))      # points at the new name
+    assert server.find_snapshot() == tmp_path / "site_snapshot.json"            # the old upload still works
+    monkeypatch.setenv("SITE_PASSWORD", PW)
+    handler, problem = server.build_handler()
+    assert problem is None
+
+
+def test_misconfigured_start_serves_no_data_but_stays_up(tmp_path, monkeypatch):
+    monkeypatch.delenv("SITE_PASSWORD", raising=False)
+    monkeypatch.setenv("SNAPSHOT_PATH", str(tmp_path / "missing.b64"))
+    handler, problem = server.build_handler()
+    assert problem and "SITE_PASSWORD" in problem
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        assert get(base + "/healthz")[0] == 200
+        code, _, body = get(base + "/", PW)
+        assert code == 503 and "not configured" in body and "Acme" not in body
+    finally:
+        srv.shutdown()
+
+
+# ---------- contact information ----------
+CONTACT_ROWS = {
+    "keep-1": {"facility_id": "keep-1", "street": "1 Main St", "zip5": "48104", "phone": "5550100100",
+               "phone_label": "Main line", "phone_source_url": "https://data.cms.gov/x",
+               "website": "https://www.acme.example", "website_source_url": "https://a.example/w",
+               "contact_checked": "2026-11-11", "personal_email": "boss@example.com", "admin_name": "Jane Doe"},
+    "keep-2": {"facility_id": "keep-2", "phone": "not a phone", "website": "javascript:alert(1)"},
+}
+
+
+def test_contacts_are_attached_with_an_allowlist():
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    one = next(i for i in snap["items"] if i["property"] == "<b>Acme Manor</b>")["contact"]
+    assert one["phone"] == "5550100100" and one["website"] == "https://www.acme.example"
+    assert one["street"] == "1 Main St" and one["checked"] == "2026-11-11"
+    blob = json.dumps(snap)
+    assert "boss@example.com" not in blob and "Jane Doe" not in blob       # nothing personal reaches the snapshot
+
+
+def test_bad_contact_values_become_not_found():
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    two = next(i for i in snap["items"] if i["property"] == "Birch Home")["contact"]
+    assert two["phone"] is None and two["website"] is None
+
+
+def test_no_contacts_at_all_still_builds():
+    snap = snapshot.build(ROWS, {"past-deal"})
+    assert all(i["contact"]["phone"] is None for i in snap["items"])
+    assert snap["list_a"][0]["phone"] == "NOT FOUND"
+
+
+def test_csv_has_phone_and_website(site):
+    snap = snapshot.build(ROWS, {"past-deal"}, CONTACT_ROWS)
+    rows = server.with_lists(snap)["list_a"]
+    csv_text = server.to_csv(rows, server.LEAD_COLS)
+    assert "(555) 010-0100" in csv_text and "https://www.acme.example" in csv_text
+
+
+def _get(base, path):
+    req = urllib.request.Request(base + path, headers={"Authorization": "Basic " + base64.b64encode(f"u:{PW}".encode()).decode()})
+    return urllib.request.urlopen(req)
+
+
+def test_page_loads_no_outside_scripts_and_bundled_libraries_are_served(site):
+    html = _get(site, "/").read().decode()
+    assert "cdn.jsdelivr.net" not in html
+    for src in re.findall(r'<script src="([^"]+)"', html):
+        assert src.startswith("/static/"), src
+        assert _get(site, src).status == 200
+    assert "cdn.jsdelivr.net" not in _get(site, "/static/app.js").headers.get("Content-Security-Policy", "")
+    assert "script-src 'self';" in _get(site, "/").headers["Content-Security-Policy"]
+
+
+def test_key_numbers_and_funnel_share_the_overview_page():
+    html = (server.STATIC_DIR / "index.html").read_text()
+    assert 'id="view-funnel"' not in html and 'data-view="funnel"' not in html
+    overview = re.search(r'<main[^>]+id="view-overview"[^>]*>(.*?)</main>', html, re.S).group(1)
+    assert 'id="kpis"' in overview and 'id="funnel"' in overview
+    assert 'id="map"' not in overview
+    assert html.index('data-view="dashboard"') < html.index('data-view="overview"') < html.index('data-view="how"')

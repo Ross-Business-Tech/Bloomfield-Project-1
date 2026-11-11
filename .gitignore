@@ -50,3 +50,6 @@ __pycache__/
 
 # lead exports (Bloomfield working data; never in the public repo)
 output/
+
+# Deal Radar preview build (made-up sample data)
+/preview-dist/

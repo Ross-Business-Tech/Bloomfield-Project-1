@@ -31,7 +31,7 @@ VIEWS = {"desktop": {"viewport": {"width": 1440, "height": 900}},
 
 def main() -> int:
     from playwright.sync_api import sync_playwright
-    snap = server.load_snapshot(str(OUT / "site_snapshot.json"))
+    snap = server.load_snapshot(str(OUT / "site_snapshot.b64"))      # the exact file that is uploaded to Render
     pw = secrets.token_urlsafe(12)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(snap, pw))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -72,10 +72,17 @@ def main() -> int:
             page.select_option("#f-state", "")
             page.click('[data-tab="C"]')
             page.wait_for_timeout(300)
-            page.locator(".list-card").scroll_into_view_if_needed()
+            page.locator("#view-dashboard .list-card").scroll_into_view_if_needed()
             path = OUT / f"site_{name}_list_c.png"
-            page.locator(".list-card").screenshot(path=str(path))
+            page.locator("#view-dashboard .list-card").screenshot(path=str(path))
             shots.append(path)
+            for view in ("overview", "how", "explore"):
+                page.goto(base + "/#/" + view, wait_until="networkidle")
+                page.wait_for_selector(f"#view-{view}:not(.hidden)")
+                page.wait_for_timeout(300)
+                path = OUT / f"site_{name}_{view}.png"
+                page.screenshot(path=str(path), full_page=view != "explore")
+                shots.append(path)
             ctx.close()
         browser.close()
     srv.shutdown()
