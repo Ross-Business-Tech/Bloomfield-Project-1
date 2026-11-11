@@ -18,6 +18,10 @@ insert into stg.court_case
 values (%(source_url)s, %(court)s, %(docket_no)s, %(case_name)s, %(chapter)s, %(filed_date)s, %(terminated_date)s,
         %(debtor_name)s, %(claims_agent_url)s, %(courtlistener_id)s)
 on conflict (court, docket_no) do update set
+  -- the first link is kept, except that a CourtListener docket link always replaces a non-CourtListener one
+  source_url       = case when excluded.source_url like 'https://www.courtlistener.com/docket/%%'
+                           and stg.court_case.source_url not like 'https://www.courtlistener.com/docket/%%'
+                          then excluded.source_url else stg.court_case.source_url end,
   case_name        = coalesce(excluded.case_name, stg.court_case.case_name),
   chapter          = coalesce(excluded.chapter, stg.court_case.chapter),
   filed_date       = coalesce(excluded.filed_date, stg.court_case.filed_date),

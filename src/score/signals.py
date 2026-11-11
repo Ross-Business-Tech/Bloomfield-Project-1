@@ -667,6 +667,39 @@ def manual_buyer_hints(conn, facts: dict, fids=None) -> list[BuyerHint]:
     return out
 
 
+PUBLIC_EVENT_CATEGORY = {"foreclosure": "legal", "receivership": "legal", "deed_in_lieu": "legal", "closure": "news",
+                         "price_collapse": "news", "lender_takeback": "debt_clock", "loan_or_lease_default": "debt_clock"}
+
+
+def public_event_signals(conn, fids=None) -> list[Sig]:
+    """Hand-checked PUBLIC distress events (config/court_facts.yaml `public_events`). Signals only: a foreclosing
+    lender that takes the property back is recorded as context, never as a buyer hint."""
+    out = []
+    for i, e in enumerate(rules.court_facts().get("public_events") or []):
+        if not _http(e.get("source_url")):
+            raise ValueError(f"config/court_facts.yaml public_events: public source_url missing ({e})")
+        if e.get("ccn"):
+            row = conn.execute("select facility_id::text from core.facility where ccn = %s", (str(e["ccn"]),)).fetchone()
+        else:
+            row = conn.execute("select facility_id::text from core.facility_xref where source_key = %s "
+                               "and source_id = 'court_manual'", (e["case"],)).fetchone()
+        if not row:
+            raise ValueError(f"config/court_facts.yaml public_events: no facility for {e.get('ccn') or e.get('case')}")
+        if fids is not None and row["facility_id"] not in fids:
+            continue
+        st = e["signal_type"]
+        ev = e.get("event_date")
+        text = e.get("evidence_text") or ""
+        if e.get("owner_after"):
+            text += f" Owner after: {e['owner_after']}."
+        out.append(Sig(row["facility_id"], st, stage_of(st), f"public_event:{e.get('case') or e.get('ccn')}:{st}:{ev}",
+                       e["source_url"], date.fromisoformat(str(ev)) if ev else None,
+                       float(e["value"]) if e.get("value") is not None else None, text,
+                       CATEGORY.get(st) or PUBLIC_EVENT_CATEGORY.get(st, "news"), "code", 1.0, "auto", "manual",
+                       flags=list(e.get("flags") or [])))
+    return out
+
+
 # ── all ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 def build(conn, today: date | None = None, fids: list[str] | None = None):
     """Return (signals, buyer_hints, stats). `fids` restricts to a facility sample (--limit)."""
@@ -679,7 +712,7 @@ def build(conn, today: date | None = None, fids: list[str] | None = None):
     fact_sigs, fact_hints = licensed_fact_signals(conn, fids)
     licensed = licensed_signals(conn, today, fids) + licensed_sale_signals(conn, fids) + fact_sigs
     closures = closure_signals(conn, today, fids)
-    sigs += news + own + hud + legal + licensed + closures
+    sigs += news + own + hud + legal + licensed + closures + public_event_signals(conn, fids)
     sigs += license_signals(conn, today, sigs, fids)          # needs the distress signals above
     # hard rule 1: a web link, or a licensed-source tag (private facts; such leads are hidden from the public view)
     sigs = [s for s in sigs if _http(s.source_url) or str(s.source_url).startswith("licensed:")]

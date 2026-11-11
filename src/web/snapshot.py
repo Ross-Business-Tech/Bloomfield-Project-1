@@ -175,9 +175,9 @@ def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dic
 def build(rows: list[dict], skip: set[str], contacts: dict | None = None, geo: dict | None = None) -> dict:
     """rows: app.v_lead_list rows in score order (facility_id used to leave out excluded homes and to attach contacts).
     contacts: {facility_id: app.v_facility_contact row}."""
-    from src.score.diversity import diversity_order, in_list_a, settings
+    from src.score.diversity import display_sort, diversity_order, in_list_a, settings
     contacts = contacts or {}
-    shown = [r for r in rows if str(r.get("facility_id")) not in skip]
+    shown = display_sort([r for r in rows if str(r.get("facility_id")) not in skip])   # deterministic ties
     ordered, cap_main = diversity_order(shown)          # display order: max N leads per buyer in the top 20
     a_order, cap_a = diversity_order([r for r in shown if in_list_a(r)])
     rank_a = {id(r): i for i, r in enumerate(a_order, 1)}
