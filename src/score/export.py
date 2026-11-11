@@ -120,6 +120,8 @@ def public_row(r: dict) -> dict | None:
     flags = list(r.get("flags") or [])
     if "licensed_only" in flags:
         return None
+    r = dict(r)
+    size_licensed = r.pop("size_licensed", False)
     if "licensed_private" not in flags:
         return r
     bd = r.get("score_breakdown") or {}
@@ -127,6 +129,8 @@ def public_row(r: dict) -> dict | None:
     if not pub:                       # no public twin: never shown
         return None
     out = dict(r)
+    if size_licensed or bd.get("size_licensed"):
+        out.update(units=None, beds=None)
     out.update(distress_type=pub.get("distress_type"), stage=pub.get("stage"), score=pub.get("score"),
                buyer=pub.get("buyer"), buyer_status=pub.get("buyer_status"),
                buyer_source_url=pub.get("buyer_source_url"), buyer_chain=pub.get("buyer_chain"))

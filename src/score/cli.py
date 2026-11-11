@@ -49,14 +49,31 @@ def run_score(conn, sigs, hints, fids, today, prune) -> dict:
     for h in hints:
         hint_by_fac[h.facility_id].append(h)
     facs = {r["facility_id"]: r for r in conn.execute(
-        "select facility_id::text, canonical_name, city, state, units, beds, ccn, care_types from core.facility "
+        "select facility_id::text, canonical_name, city, state, units, beds, ccn, care_types, state_source from core.facility "
         "where facility_id = any(%(f)s::uuid[])", {"f": list(by_fac)}).fetchall()}
+    # Licensed sizes (private tables) help the INTERNAL ranking only: the scored copy of a facility gets the size
+    # when no public source has one, and is marked so every Bloomfield-facing output drops it. The public twin
+    # (attach_public) scores the facility without it.
+    pub_facs = facs
+    facs = {fid: dict(f) for fid, f in facs.items()}
+    for r in conn.execute(
+            "select facility_id::text fid, max(units) units from (select facility_id, units from private.licensed_loan "
+            "union all select facility_id, units from private.licensed_fact) x where facility_id = any(%(f)s::uuid[]) "
+            "and units is not null group by 1", {"f": list(facs)}).fetchall():
+        f = facs.get(r["fid"])
+        if f and f["units"] is None and f["beds"] is None:
+            f["units"], f["size_licensed"] = int(r["units"]), True
     resolver = BuyerResolver(conn)
+    for fid, ss in by_fac.items():             # bankruptcy families per home (a debtor is never its own buyer)
+        fams = {x.family_id for x in ss if x.family_id is not None}
+        if fams:
+            resolver.fac_families[fid] = fams
     buyers = {fid: resolver.resolve(fid, hint_by_fac.get(fid, []), facs[fid]["canonical_name"], today)
               for fid in by_fac}
     ranked = leads.score_all(facs, by_fac, buyers, today)
     # public twin (no licensed signals / buyers) for leads with licensed content: Bloomfield-facing score and buyer
-    leads.attach_public(ranked, facs, by_fac, hint_by_fac, buyers, resolver, today)
+    leads.attach_public(ranked, facs, by_fac, hint_by_fac, buyers, resolver, today, pub_facs)
+    leads.keep_name_only_out_of_public_top(ranked)      # court-only rule on the public ranking too
     main = [l for l in ranked if l.tier == "main"]
     stats = leads.write_leads(conn, main, prune=prune)       # watch list: CSV only (Gate 3, database space)
     urls = {fid: [s.source_url for s in by_fac[fid] if s.source_url] for fid in by_fac}

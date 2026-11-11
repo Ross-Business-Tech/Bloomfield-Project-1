@@ -10,7 +10,7 @@ from src.common.raw_writer import write_document
 from . import claims_agents, courtlistener, elevenflo
 from .base import SourceResult
 
-SOURCES = ("courtlistener", "stretto", "epiq", "elevenflo")
+SOURCES = ("courtlistener", "stretto", "epiq", "elevenflo", "court_manual")
 
 UPSERT = """
 insert into stg.court_case
@@ -29,9 +29,29 @@ returning (xmax = 0) as inserted
 """
 
 
+def manual_cases() -> SourceResult:
+    """Hand-entered PUBLIC bankruptcy filings (config/court_facts.yaml `cases`): a case our court sources have not
+    picked up yet, entered from a public docket listing (court, case number, debtor, chapter, filing date, link)."""
+    from datetime import date as _date
+
+    from src.score import rules
+    from .base import CaseRecord
+    res = SourceResult("court_manual")
+    for c in rules.court_facts().get("cases") or []:
+        if not str(c.get("source_url", "")).startswith("http"):
+            raise ValueError(f"court_facts.yaml cases: public source_url missing for {c.get('debtor_name')}")
+        fd = c.get("filed_date")
+        res.cases.append(CaseRecord("court_manual", c["source_url"], c["court"], c["docket_no"], c.get("case_name") or c["debtor_name"],
+                                    str(c.get("chapter") or "") or None, fd if isinstance(fd, _date) or fd is None else _date.fromisoformat(fd),
+                                    None, c["debtor_name"], c.get("claims_agent_url")))
+    return res
+
+
 def fetch(source_id: str, limit: int | None = None, **cl_kwargs) -> SourceResult:
     if source_id == "courtlistener":
         return courtlistener.run(limit, **cl_kwargs)
+    if source_id == "court_manual":
+        return manual_cases()
     with PoliteClient(source_id) as client:
         fn = {"stretto": claims_agents.fetch_stretto, "epiq": claims_agents.fetch_epiq,
               "elevenflo": elevenflo.fetch_elevenflo}[source_id]

@@ -184,8 +184,9 @@ def match_all(conn, rows: list[dict], dry_run: bool = False) -> Counter:
             r["facility_id"], r["match_method"], r["match_score"] = None, "new", None
             continue
         mc = re.search(r"alzheimer|memory", r["property_name"], re.I)
+        # the size stays in private.licensed_loan (decision Nov 10, 2026: licensed sizes never reach core.facility)
         fid = new_facility(batch, idx, name=r["property_name"], city=r["city"], state=r["state"],
-                           care_types=["MC"] if mc else ["AL"], units=r["units"])
+                           care_types=["MC"] if mc else ["AL"])
         batch.xrefs.append([fid, SOURCE_ID, r["loan_key"], "manual", None, "auto"])
         r["facility_id"], r["match_method"], r["match_score"] = fid, "new", None
     if not dry_run:

@@ -90,7 +90,7 @@ def run(conn, model: str = cl.DEFAULT_MODEL, limit: int | None = None, dry_run: 
             need.append(d)
     stats["from_cache"] = len(hits)
 
-    batch = use_batch if use_batch is not None else len(need) >= 50
+    batch = (use_batch if use_batch is not None else len(need) >= 50) and not cl.is_gemini(model)
     est, tokens = estimate_usd(model, need, batch)
     stats["estimate_usd"] = round(est, 4)
     log(f"{len(docs)} pending | {len(to_skip)} skipped by pre-filter | {len(hits)} cached | {len(need)} to send")

@@ -13,7 +13,8 @@ def main(argv=None) -> None:
     p.add_argument("--limit", type=int, help="only the first N unprocessed documents")
     p.add_argument("--eval", action="store_true", help="score the 20 labeled eval cases instead of the full run")
     p.add_argument("--dry-run", action="store_true", help="count + cost estimate only; no API calls, no writes")
-    p.add_argument("--model", default=cl.DEFAULT_MODEL)
+    p.add_argument("--model", default=None,
+                   help="default: the production model for a full run; the LLM_PROVIDER model for --eval")
     p.add_argument("--budget", type=float, default=15.0, help="abort if the estimate exceeds this many USD")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--batch", dest="use_batch", action="store_true", default=None, help="force Message Batches")
@@ -22,14 +23,19 @@ def main(argv=None) -> None:
 
     if a.eval:
         from .evaluate import run_eval
-        run_eval(a.model)
+        run_eval(a.model or cl.default_model())
         return
+    model = a.model or cl.PRODUCTION_MODEL
+    if model != cl.PRODUCTION_MODEL:
+        # decision Nov 10, 2026: a new model writes production rows only after it matches on holdout + dev sets
+        p.error(f"{model} is not the production model ({cl.PRODUCTION_MODEL}); evaluate it with --eval and "
+                "python -m eval.extraction.compare_models first")
 
     from src.common.db import connect
 
     from .run import run
     with connect() as conn:
-        run(conn, model=a.model, limit=a.limit, dry_run=a.dry_run, use_batch=a.use_batch, budget=a.budget)
+        run(conn, model=model, limit=a.limit, dry_run=a.dry_run, use_batch=a.use_batch, budget=a.budget)
         mb = conn.execute("select pg_database_size(current_database())/1048576 as mb").fetchone()["mb"]
         print(f"database size: {mb} MB" + ("  WARNING: over 400 MB (free plan limit 500 MB)" if mb > 400 else ""))
 

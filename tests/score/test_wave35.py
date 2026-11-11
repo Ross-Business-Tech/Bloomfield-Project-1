@@ -76,3 +76,60 @@ def test_loans_read_rows_with_example_columns(tmp_path):
     assert h["orig_date"] == date(2015, 1, 15) and h["status_history"] == "CC12C" and h["source_label"] == "licensed export"
     assert l["loan_group"] == "Group 1" and l["units"] is None and l["orig_date"] is None
     assert l["loan_status"] == "Special Servicing" and l["transfer_reason"] == "Default" and l["orig_balance"] == 1e6
+
+
+def test_brand_words_and_parent_match():
+    from src.score import rules
+    from src.score.buyers import BuyerResolver
+    city = rules.brand_words("Springfield Illinois", raw=True)
+    assert rules.brand_words("ACME SPRINGFIELD OPCO LLC", extra_generic=city) == ["acme"]
+    assert rules.brand_words("ACME SENIOR LIVING, LLC") == ["acme"]
+    br = BuyerResolver.__new__(BuyerResolver)          # no database: hand-built index
+    br.fac_city = {"f1": ("SPRINGFIELD", "IL")}
+    br.brand_index = {"acme": [("ACME SENIOR LIVING, LLC", ["acme"], 5)],
+                      "rosewood": [("ROSEWOOD CARE INC", ["rosewood"], 3)]}
+    assert br.brand_parent("f1", "ACME SPRINGFIELD OPCO LLC") == "ACME SENIOR LIVING, LLC"
+    assert br.brand_parent("f1", "3920 ROSEWOOD WAY OPCO LLC") is None     # address-named shell
+    assert br.brand_parent("f1", "ACME CARE CENTER LLC") is None           # not an OpCo / PropCo
+    br.brand_index["acme"].append(("ACME HEALTH GROUP", ["acme"], 4))      # two different operators: ambiguous
+    assert br.brand_parent("f1", "ACME SPRINGFIELD OPCO LLC") is None
+
+
+def test_entity_stem_links_trust_and_master_tenant_names():
+    from src.common.normalize import entity_stem
+    assert entity_stem("Acme Living of Springfield DST") == entity_stem("ACME LIVING OF SPRINGFIELD MT, LLC")
+    assert entity_stem("Acme Springfield OpCo LLC") == entity_stem("Acme Springfield")
+    assert entity_stem("Mt. Pleasant Manor") == "mount pleasant manor"      # only a trailing suffix is dropped
+    assert entity_stem("Acme Living of Springfield DST") != entity_stem("Acme Living of Shelbyville MT, LLC")
+
+
+def test_name_only_court_leads_stay_out_of_the_public_top(monkeypatch):
+    from types import SimpleNamespace as NS
+    from src.score import leads, rules
+    monkeypatch.setattr(rules, "court_name_only_cfg", lambda: {"score_cap": 60, "keep_out_of_top": 3})
+    mk = lambda s, flags=(), pub=None: NS(tier="main", flags=list(flags), score=s,
+                                         breakdown={"public": {"score": pub}} if pub is not None else {})
+    hidden = mk(100, ["licensed_private", "licensed_only"])        # not visible publicly: does not count
+    conf = [mk(90), mk(80), mk(70), mk(60)]
+    name_only = mk(85, ["court_name_only"])
+    lic_name_only = mk(95, ["court_name_only", "licensed_private"], pub=75)
+    n = leads.keep_name_only_out_of_public_top([hidden, *conf, name_only, lic_name_only])
+    assert n == 2 and name_only.score == 69.99 and lic_name_only.breakdown["public"]["score"] == 69.99
+
+
+def test_debtor_is_never_its_own_buyer_and_brand_twins_are_flagged():
+    from src.score.buyers import BuyerResolver
+    from src.score.signals import BuyerHint
+    br = BuyerResolver.__new__(BuyerResolver)
+    br.fac_families = {"f1": {7}}
+    br.family_debtors = {7: {"Acme Healthcare Capital Holdings, LLC", "Acme Senior Living of Springfield DST",
+                             "300 Main Street OpCo LLC"}}
+    assert br.debtor_relation("f1", "ACME HEALTHCARE CAPITAL HOLDINGS LLC") == "debtor"
+    assert br.debtor_relation("f1", "Acme Senior Living of Springfield MT, LLC") == "debtor"   # trust vs master tenant
+    assert br.debtor_relation("f1", "Acme Florida Acquisitions LLC") == "insider"
+    assert br.debtor_relation("f1", "101 Main Street Holdings, LLC") is None                 # address names: no brand
+    assert br.debtor_relation("f1", "Other Senior Living LLC") is None
+    assert br.debtor_relation("f2", "Acme Healthcare Capital Holdings, LLC") is None         # not this home's case
+    b = BuyerResolver.resolve(br, "f1", [BuyerHint("f1", "ACME HEALTHCARE CAPITAL HOLDINGS LLC", "named", "https://x",
+                                                   "license_change")])
+    assert b.status == "NOT FOUND" and b.dropped_debtor

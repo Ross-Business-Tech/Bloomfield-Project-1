@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from src.common.bulk import bulk_upsert
-from src.common.normalize import normalize_name
+from src.common.normalize import entity_stem, normalize_name
 
 from src.extract.client import DEFAULT_MODEL as EXTRACTION_MODEL   # only the current model's answers (Gate 3: Sonnet)
 
@@ -22,7 +22,7 @@ from .rules import CATEGORY, METRIC_SIGNALS, Sig, stage_of
 
 NEWS_SOURCES = ("shb_rss", "shn_rss", "snn_rss", "gnews_rss", "mcknights_ltc_rss", "mcknights_sl_rss", "gdelt_doc",
                 "bondoro_rss", "whatnow_rss")
-COURT_SOURCES = ("courtlistener", "elevenflo", "epiq", "stretto", "kroll")
+COURT_SOURCES = ("courtlistener", "elevenflo", "epiq", "stretto", "kroll", "court_manual")
 
 
 @dataclass
@@ -434,11 +434,13 @@ def news_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                 s.evidence_text += f" [facility link needs review, score {r['match_score']}]"
             out.append(s)
         buyer = f.get("buyer_or_new_operator")
-        if rules.is_found(buyer) and (types or "operator_change" in (dts or [])):
+        # an operator change / buyer from an article needs a confirmed building link (a 75-89 fuzzy match that
+        # still awaits review only shows the distress, flagged): conservative, Wave 4
+        if rules.is_found(buyer) and (types or "operator_change" in (dts or [])) and not link_nr:
             hints.append(BuyerHint(fid, buyer.strip(), rules.news_buyer_status(f.get("stage_text")), url, "news",
                                    rules.news_change_date(f.get("event_dates"), r["pub"]), sale_orgs.get((fid, url)),
                                    "needs_review" if link_nr else "auto"))
-        if isinstance(dts, list) and "operator_change" in dts and r["pub"]:
+        if isinstance(dts, list) and "operator_change" in dts and r["pub"] and not link_nr:
             changes[fid].append((r["pub"], url, "news-reported new operator"))
     # WARN notices: the notice itself is the closure / layoff signal
     for r in conn.execute(
@@ -472,14 +474,16 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
     prio = {"rejected": 3, "confirmed": 2, "needs_review": 1, "auto": 0}
     for r in conn.execute("select facility_id::text, source_key, review_status from core.facility_xref "
                           "where source_id = any(%(s)s)", {"s": list(COURT_SOURCES)}).fetchall():
-        k = (r["facility_id"], r["source_key"])
+        k = (r["facility_id"], r["source_key"].split("#")[0])     # hand entries: '<court>:<docket>#<home name>'
         if prio[r["review_status"]] >= prio.get(xr.get(k), -1):
             xr[k] = r["review_status"]
     # CMS ownership chain: the facility's own operator / licensee orgs (normalized names)
     operators = defaultdict(set)
+    op_stems = defaultdict(set)              # trust / master-tenant variants of the same entity (entity_stem)
     for r in conn.execute("select r.facility_id::text, o.name from core.facility_role r join core.organization o "
                           "using (org_id) where r.role in ('operator','licensee')").fetchall():
         operators[r["facility_id"]].add(normalize_name(r["name"]))
+        op_stems[r["facility_id"]].add(entity_stem(r["name"]))
     out = defaultdict(list)
     for m in members:
         key = keys.get(m["id"])
@@ -496,6 +500,8 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
                 confirmed_by = "human"
             elif debtor and debtor in operators.get(fid, ()):
                 confirmed_by = "cms_operator"
+            elif debtor and len(entity_stem(debtor).split()) >= 3 and entity_stem(debtor) in op_stems.get(fid, ()):
+                confirmed_by = "cms_operator"    # same entity as the home's operator / licence holder (DST vs MT name)
             elif method == "debtor_org":
                 confirmed_by = "cms_ownership"   # debtor is a parent owner: portfolio link
             else:
@@ -646,8 +652,10 @@ def manual_buyer_hints(conn, facts: dict, fids=None) -> list[BuyerHint]:
         if b.get("ccn"):
             row = conn.execute("select facility_id::text from core.facility where ccn = %s", (str(b["ccn"]),)).fetchone()
         else:
+            # one home of a multi-home case: its hand-entry key '<court>:<docket>#<home name>'
+            key = f"{b['case']}#{normalize_name(b['home'])}" if b.get("home") else b["case"]
             row = conn.execute("select facility_id::text from core.facility_xref where source_key = %s "
-                               "and match_method = 'manual'", (b["case"],)).fetchone()
+                               "and match_method = 'manual'", (key,)).fetchone()
         if not row:
             raise ValueError(f"config/court_facts.yaml buyers: no facility for {b.get('ccn') or b.get('case')} "
                              "(run python -m src.enrich --step manual first)")
