@@ -64,6 +64,134 @@
     buildTabs();
     await buildMap();
     render();
+    buildHow();
+    buildFunnel();
+    buildExplore();
+    window.addEventListener("hashchange", route);
+    route();
+  }
+
+  /* ---------- pages ---------- */
+  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/how": "how", "#/funnel": "funnel", "#/explore": "explore" };
+  function route() {
+    const v = VIEWS[location.hash] || "dashboard";
+    S.view = v;
+    for (const id of ["dashboard", "how", "funnel", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
+    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === v));
+    $("download").classList.toggle("hidden", v === "how" || v === "funnel");
+    closePanel();
+    window.scrollTo(0, 0);
+  }
+
+  function buildHow() {
+    const steps = [["1", "Collect", "Public records and news: Medicare data, HUD loans, state licence lists, bankruptcy courts, trade press."],
+      ["2", "Read with AI", "Articles are read by an AI model that copies facts exactly as written (name, city, buyer, stage); anything not stated is NOT FOUND."],
+      ["3", "Link", "Every fact is matched to one building and one company (by licence or Medicare number, else name + address)."],
+      ["4", "Score", "Rules turn the linked facts into dated signals and a score; see below."],
+      ["5", "Lists", "Main list, then List A (live deals), List B (pre-sale distress), List C (repeat buyers)."]];
+    $("pipeline").replaceChildren(...steps.flatMap(([k, t, d], i) => [
+      i ? el("div", { class: "arrow-r", "aria-hidden": "true", text: "→" }) : null,
+      el("div", { class: "step" }, el("div", { class: "k", text: "Step " + k }), el("div", { class: "t", text: t }), el("div", { class: "d", text: d }))])
+      .filter(Boolean));
+    const src = S.data.sources_table || [];
+    $("sources-table").replaceChildren(
+      el("thead", {}, el("tr", {}, ["Source", "What it provides", "Records", "Refresh"].map((h) => el("th", { text: h })))),
+      el("tbody", {}, src.map((r) => el("tr", {}, el("td", { class: "prop", text: r.source }), el("td", { text: r.provides }),
+        el("td", { class: "num", text: fmtInt(r.records) + " " + (r.records === 1 ? r.unit.replace(/s$/, "").replace(/ies$/, "y") : r.unit) }),
+        el("td", { class: "muted", text: r.refresh })))));
+    const R = S.data.rules || {};
+    const sw = R.stage_weight || {}, sf = R.size_fit || {}, rc = R.recency || {}, cp = R.closed_sale_penalty || {};
+    const rule = (title, ...body) => el("div", { class: "rule" }, el("h3", { text: title }), ...body);
+    $("rules").replaceChildren(el("div", { class: "rules" },
+      rule("Main list", el("p", { text: "A building makes the main list with " + (R.main_min_signals || 3) +
+        " or more different distress signals, or one hard event. Everything else with a signal goes to the watch list (Explore)." })),
+      rule("Hard events", el("p", { text: "One of these is enough on its own:" }),
+        el("ul", {}, (R.hard_events || []).map((h) => el("li", { text: pretty(h) })))),
+      rule("Distress stage", el("p", { text: "Points by how far along the distress is: sale " + sw.sale + ", late " + sw.late +
+        ", middle " + sw.middle + ", early " + sw.early + ". A court-supervised sale adds " + R.court_sale_priority +
+        " so live sales rise to the top; a sale that closed more than " + cp.after_months + " months ago loses " + cp.points + "." })),
+      rule("Buyer", el("p", { text: "A buyer named in a source adds " + R.buyer_named_bonus + " points; a candidate (proposed or stalking-horse bidder) adds " +
+        R.buyer_candidate_bonus + ". A named buyer counts only if the change is under " + R.buyer_named_max_months +
+        " months old. The seller is never its own buyer, and a buyer with the seller's brand is flagged as a possible insider." })),
+      rule("Deal size fit", el("p", { text: "Buildings with " + sf.min_units + "–" + sf.max_units + " units or beds (a proxy for a $3–30M loan) add " +
+        sf.points + " points. Very large bankruptcies are shown as one deal; only their top " + R.family_top_n + " homes keep full points." })),
+      rule("Recency", el("p", { text: "Up to " + rc.max_points + " points: full within " + rc.full_points_within_months +
+        " months of the latest signal, falling to zero after " + rc.zero_points_after_months + " months. Events older than " +
+        R.lead_window_months + " months are context only." })),
+      rule("Weak links", el("p", { text: "A court case matched to a building by name alone is marked unconfirmed and kept out of the top " +
+        R.name_only_top + " until an address, licence or Medicare record confirms it." }))));
+  }
+
+  function buildFunnel() {
+    const F = S.data.funnel || [];
+    const max = d3.max(F, (f) => f.count) || 1;
+    const w = d3.scaleLog().domain([1, max]).range([4, 100]).clamp(true);
+    $("funnel").replaceChildren(...F.map((f) => el("div", { class: "frow" },
+      el("div", { class: "lab" }, f.list ? el("span", { class: "dot " + f.list.toLowerCase() }) : null, " " + f.step,
+        el("span", { class: "cnt", text: fmtInt(f.count) })),
+      el("div", { class: "barbox" }, el("div", { class: "fbar" + (f.list ? " " + f.list.toLowerCase() : ""),
+        style: "width:" + w(Math.max(1, f.count)) + "%", title: f.step + ": " + fmtInt(f.count) })),
+      el("div", { class: "rule-t", text: f.rule }))));
+  }
+
+  /* ---------- explore (watch list) ---------- */
+  const X = { page: 1 };
+  function buildExplore() {
+    const rows = S.data.explore || [];
+    const states = [...new Set(rows.map((r) => r.state).filter(Boolean))].sort();
+    const sigs = [...new Set(rows.flatMap((r) => r.signals))].sort();
+    $("x-state").replaceChildren(option("", "All states"), ...states.map((c) => option(c, STATES[c] || c)));
+    $("x-care").replaceChildren(option("", "All care types"), ...CARE_TYPES.map((c) => option(c, c)));
+    $("x-signal").replaceChildren(option("", "All signals"), ...sigs.map((c) => option(c, pretty(c))));
+    for (const id of ["x-search", "x-state", "x-care", "x-signal"]) $(id).addEventListener("input", () => { X.page = 1; renderExplore(); });
+    $("x-reset").addEventListener("click", () => { for (const id of ["x-search", "x-state", "x-care", "x-signal"]) $(id).value = ""; X.page = 1; renderExplore(); });
+    $("x-thead").replaceChildren(el("tr", {}, ["Property", "City / state", "Care type", "Units", "Signals", "Why not on the main list", "Score", "Sources"]
+      .map((h) => el("th", { text: h }))));
+    renderExplore();
+  }
+  function exploreRows() {
+    const q = $("x-search").value.trim().toLowerCase(), st = $("x-state").value, care = $("x-care").value, sig = $("x-signal").value;
+    return (S.data.explore || []).filter((r) => (!st || r.state === st) && (!care || r.care_types.includes(care))
+      && (!sig || r.signals.includes(sig)) && (!q || [r.property, r.city, r.buyer].join(" ").toLowerCase().includes(q)));
+  }
+  function renderExplore() {
+    const rows = exploreRows();
+    X.rows = rows;
+    const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    X.page = Math.min(X.page, pages);
+    $("x-count").textContent = fmtInt(rows.length) + " of " + fmtInt((S.data.explore || []).length) + " watch-list buildings";
+    $("x-tbody").replaceChildren(...rows.slice((X.page - 1) * PAGE_SIZE, X.page * PAGE_SIZE).map((r) => el("tr", { class: "static" },
+      el("td", { class: "prop", text: r.property }),
+      el("td", { class: "loc" }, r.city || r.state ? [r.city, r.state].filter(Boolean).join(", ") : nf()),
+      el("td", {}, r.care_types.length ? r.care_types.join(" / ") : nf()),
+      el("td", { class: "num" }, size(r) != null ? fmtInt(size(r)) : nf()),
+      el("td", {}, el("div", { class: "chips" }, r.signals.map((x) => el("span", { class: "chip", text: pretty(x) })))),
+      el("td", { class: "reason", text: r.reason }),
+      el("td", {}, scoreBar(r.score)),
+      el("td", {}, el("div", { class: "chips" }, r.sources.slice(0, 3).map((u) => { const s = safeUrl(u);
+        return s ? el("a", { href: s, target: "_blank", rel: "noopener noreferrer", text: hostOf(s) }) : null; }),
+        r.sources.length > 3 ? el("span", { class: "muted", text: "+" + (r.sources.length - 3) }) : null)))));
+    $("x-empty").classList.toggle("hidden", rows.length > 0);
+    $("x-pager").replaceChildren(el("span", { class: "muted", text: rows.length ? "Page " + X.page + " of " + pages : "" }),
+      el("div", { class: "btns" },
+        el("button", { class: "btn", type: "button", disabled: X.page <= 1, onclick: () => { X.page--; renderExplore(); } }, "Previous"),
+        el("button", { class: "btn", type: "button", disabled: X.page >= pages, onclick: () => { X.page++; renderExplore(); } }, "Next")));
+  }
+
+  /* ---------- "Why this lead" (rules in code, no AI) ---------- */
+  function whyThisLead(r) {
+    const bd = r.breakdown || {}, parts = [];
+    const hard = (bd.hard_events || r.signals.filter((x) => HARD.has(x))).map(pretty);
+    if (bd.court_sale_priority > 0) parts.push("a court-supervised sale is under way");
+    else if (hard.length) parts.push((hard.length > 1 ? "hard events (" : "a hard event (") + hard.join(", ") + ")");
+    else parts.push(r.signals.length + " distress signals (" + r.signals.map(pretty).join(", ") + ")");
+    if (r.buyer && r.buyer_group === "confirmed") parts.push("a named buyer, " + r.buyer);
+    else if (r.buyer && r.buyer_group === "candidate") parts.push("a candidate buyer, " + r.buyer);
+    if (bd.size_fit > 0) parts.push("a size that fits a $3–30M loan");
+    if (bd.closed_sale_penalty < 0) parts.push("although its sale closed over a year ago");
+    let s = "Ranked #" + r.rank + " because of " + (parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : parts[0]);
+    if (bd.latest_signal_date) s += "; latest signal " + bd.latest_signal_date;
+    return s + ".";
   }
 
   /* ---------- KPIs ---------- */
@@ -280,7 +408,7 @@
       el("span", { text: (r.lists.length ? "List " + r.lists.join(" · ") + " · " : "") + "Rank " + r.rank }));
     $("p-title").textContent = r.property || "";
     $("p-sub").replaceChildren(r.city || r.state ? [r.city, r.state].filter(Boolean).join(", ") : nf());
-    const sections = [];
+    const sections = [el("div", { class: "why" }, el("strong", { text: "Why this lead" }), whyThisLead(r))];
 
     // facts (NOT FOUND highlighted)
     const facts = [["City", r.city], ["State", r.state && (STATES[r.state] || r.state)],
@@ -358,6 +486,15 @@
   $("download").addEventListener("click", () => {
     if (!S.rows) return;
     let header, lines;
+    if (S.view === "explore") {
+      header = ["property", "city", "state", "care_type", "units_or_beds", "signals", "why_not_main_list", "score", "sources"];
+      lines = (X.rows || []).map((r) => [r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", r.care_types.join("/") || "NOT FOUND",
+        size(r) ?? "NOT FOUND", r.signals.join(";"), r.reason, r.score, r.sources.join(" ")]);
+      const csv = [header, ...lines].map((l) => l.map(csvCell).join(",")).join("\n");
+      const a = el("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: "deal-radar-watch-list.csv" });
+      document.body.append(a); a.click(); a.remove();
+      return;
+    }
     if (S.tab === "C") {
       header = ["rank", "buyer", "homes_in_list", "example_homes", "public_source_link"];
       lines = S.rows.map((c) => header.map((k) => c[k]));
