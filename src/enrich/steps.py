@@ -938,6 +938,9 @@ def step_extraction(conn, limit=None) -> dict:
                 stats["missing_name_or_state"] += 1
                 continue
             street, city = clean(f.get("street")), clean(f.get("city"))
+            if city and normalize_name(name) == normalize_name(city):
+                stats["name_is_only_the_city"] += 1      # a city name ("Springfield") is a place, not a building: never matched
+                continue
             rec = {"name": name, "street": street, "city": city, "state": state, "zip5": clean(f.get("zip5"))}
             key = f"doc:{r['document_id']}" + (f":{i}" if i else "")
             fid, status = resolve(batch, idx, existing, r["source_id"], key, rec, stats,

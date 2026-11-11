@@ -434,11 +434,13 @@ def news_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                 s.evidence_text += f" [facility link needs review, score {r['match_score']}]"
             out.append(s)
         buyer = f.get("buyer_or_new_operator")
-        if rules.is_found(buyer) and (types or "operator_change" in (dts or [])):
+        # an operator change / buyer from an article needs a confirmed building link (a 75-89 fuzzy match that
+        # still awaits review only shows the distress, flagged): conservative, Wave 4
+        if rules.is_found(buyer) and (types or "operator_change" in (dts or [])) and not link_nr:
             hints.append(BuyerHint(fid, buyer.strip(), rules.news_buyer_status(f.get("stage_text")), url, "news",
                                    rules.news_change_date(f.get("event_dates"), r["pub"]), sale_orgs.get((fid, url)),
                                    "needs_review" if link_nr else "auto"))
-        if isinstance(dts, list) and "operator_change" in dts and r["pub"]:
+        if isinstance(dts, list) and "operator_change" in dts and r["pub"] and not link_nr:
             changes[fid].append((r["pub"], url, "news-reported new operator"))
     # WARN notices: the notice itself is the closure / layoff signal
     for r in conn.execute(
