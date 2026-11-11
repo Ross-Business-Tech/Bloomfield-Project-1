@@ -108,3 +108,10 @@ scoring:            # docs/BUILD_SPEC.md step 7
     max_units: 250
     points: 10
   hud_exit_bonus: 10               # buyer has prior Section 232 loans
+  care_type_fit:                   # ASSUMPTION (Nov 11, to confirm with the client): assisted living / IL / memory care / CCRC fit
+    types: [AL, IL, MC, CCRC]
+    points: 10
+  buyer_diversity:                 # display ranking only: at most `per_buyer` leads per buyer in the top `top_n` of each list
+    top_n: 20
+    per_buyer: 2
+  buyer_mega_platform_facilities: 100   # ASSUMPTION (Nov 11): buyer (or parent) with more homes = flag buyer_mega_platform, size_fit 0

@@ -114,7 +114,7 @@ def main() -> int:
     shutil.copytree(STATIC / "vendor", OUT / "static" / "vendor")
     for name in ("app.js", "app.css", "states-albers-10m.json"):
         shutil.copy(STATIC / name, OUT / "static" / name)
-    keys = ("generated_at", "counts", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+    keys = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
     (OUT / "api" / "snapshot.json").write_text(json.dumps({k: snap.get(k) for k in keys}, ensure_ascii=False, default=str), encoding="utf-8")
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     banner = ('<div style="background:#c9a66b;color:#0b1f3a;text-align:center;font:600 13px Inter,system-ui,sans-serif;padding:7px 12px">'

@@ -114,6 +114,9 @@ def main(argv=None) -> int:
         if "score" in steps:
             st, watch = run_score(conn, sigs, hints, fids, today, prune=fids is None)
             print("score:", st)
+            if fids is None:
+                from . import diversity
+                diversity.main()                    # buyer diversity cap in score_breakdown (display ranking)
         mb = db_mb(conn)
         print(f"database size {mb:.0f} MB")
         if "view" in steps or "summary" in steps:

@@ -343,3 +343,5 @@ td.rank { color: var(--muted); font-variant-numeric: tabular-nums; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0s !important; transition-duration: 0.01ms !important;
     transition-delay: 0s !important; scroll-behavior: auto !important; }
 }
+
+.funnel-recon { margin: 14px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink, #0b1f3a); }
