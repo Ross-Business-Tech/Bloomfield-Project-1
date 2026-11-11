@@ -29,6 +29,19 @@ def buyer_key(r: dict) -> str | None:
     return party_key(name)
 
 
+def tie_key(r: dict):
+    """Display order: score desc, then most recent event date desc, then lead_id (stable across runs)."""
+    bd = r.get("score_breakdown") or {}
+    d = str(bd.get("latest_signal_date") or r.get("last_updated") or "")[:10]
+    neg_date = tuple(-ord(ch) for ch in d)            # descending date as a sortable key ('' sorts last)
+    return (-(float(r.get("score")) if r.get("score") is not None else float("-inf")), neg_date if d else (1,),
+            str(r.get("lead_id") or r.get("facility_id") or ""))
+
+
+def display_sort(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=tie_key)
+
+
 def diversity_order(rows: list[dict], top_n: int | None = None, per_buyer: int | None = None) -> tuple[list[dict], set]:
     """rows in score order -> (display order, ids of capped rows). Row id = lead_id (else facility_id)."""
     if top_n is None or per_buyer is None:
@@ -62,6 +75,7 @@ def main() -> int:
         rows = [dict(r) for r in conn.execute(
             "select lead_id::text, facility_id::text, buyer, buyer_status, flags, score, score_breakdown "
             "from app.v_lead_list order by score desc nulls last").fetchall()]
+        rows = display_sort(rows)
         _, cap_main = diversity_order(rows)
         _, cap_a = diversity_order([r for r in rows if in_list_a(r)])
         conn.execute("update app.lead set score_breakdown = score_breakdown - 'buyer_diversity_cap' "

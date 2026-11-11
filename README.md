@@ -2,8 +2,70 @@
 
 > **One line:** An AI agent that scans public data to find senior housing properties heading into distress — and the operators about to buy them — so Bloomfield Capital can offer a bridge loan **before a broker gets involved**.
 
-**Status:** Scoping done · Building MVP
-**Last updated:** Nov 9, 2026
+**Status:** Final (Nov 11, 2026): the Deal Radar website is live (private, password-protected) · next steps in [`docs/ROADMAP.md`](docs/ROADMAP.md)
+**Last updated:** Nov 11, 2026
+
+## Final state (Nov 11, 2026)
+
+**Deal Radar** is a password-protected website on Render (service `deal-radar-umich`, branch `development`). It shows a
+**static snapshot** of the public lead list: no database connection and no key at runtime.
+
+**Map-first:** the home page is a US map with three headline numbers and List A / B / C toggles. Click a state, then a
+city bubble, then a property pin to open the lead card (rank, score, stage, buyer, signals with source links, and the
+building's public phone / website). Search and the breadcrumb are always visible; Esc or Back goes up one level. The
+top bar also has **Leads** (the ranked list), **Buyers** (Named · Candidate · not final · Unverified · List C repeat
+buyers), **The numbers** (reconciliation and funnel), **Watch list** and **How it works** (the `?` button).
+
+| Final number (published snapshot, Nov 11, 2026) | Value |
+|---|---|
+| Public leads (main list) | **533** = List A 235 + List B 243 + 55 other |
+| Other (neither A nor B) | 18 stalking-horse candidates · 23 older ownership changes · 13 sales under way with no public buyer · 1 shell / closed |
+| List C: repeat buyers | 159 companies, linked to 43 of the leads |
+| States covered | 44 |
+| Leads with a named buyer | 44% (236) |
+| Leads with a public phone or website | 45% (239) |
+| AL / IL / MC / CCRC share | 11% of the main list · 35% of the top 20 · 44% of the top 50 |
+| Watch list (Explore) | 7,225 buildings |
+| Tests | 288 passing (`pytest -q`) |
+
+Every buyer and signal on the site rests on a public source link; missing values read `NOT FOUND`. Licensed facts are
+never shown or scored in the public view.
+
+### Refresh and publish the site
+
+Run on a team laptop with the pipeline set up (`.env` has the database URL and `RENDER_API_KEY`):
+
+1. Refresh the data: the pipeline commands in [section 12](#12-repo-structure) (collect → extract → enrich →
+   `python -m src.score` → `python -m src.score.takeovers`).
+2. `.venv/bin/pytest -q` and the full leak check (`python tools/leak_guard.py --range origin/development...HEAD` for
+   code; the publish command checks the data).
+3. **Dry run:** `python -m src.web.publish`. It rebuilds the snapshot, packs it (must stay under 900 KB), runs the leak
+   checks (private terms, `licensed:` tags, past-deal homes, the client's name outside place names, funnel totals) and
+   prints the Render calls it *would* make. Nothing changes on Render.
+4. **Publish:** `python -m src.web.publish --confirm`. It keeps the previous upload as
+   `output/site_snapshot.prev.b64`, uploads `output/site_snapshot.b64` as the Render Secret File, starts a deploy, waits
+   until it is live and checks `/healthz` = 200. If anything fails it stops; do not retry blindly, read the output.
+5. Open the site, log in, and click home → a state → a city → a lead card.
+
+`output/` is gitignored: never commit the snapshot (`git add -f` is forbidden). Render `autoDeploy` is off, so merging
+a pull request does **not** update the site; a code change also needs a deploy (step 4, or *Manual Deploy* in the
+Render dashboard).
+
+### Roll back
+
+- **Data (the snapshot):** in the Render dashboard → service → *Environment* → *Secret Files*, replace the contents of
+  `site_snapshot.b64` with the contents of `output/site_snapshot.prev.b64`, save, then *Manual Deploy → Deploy latest
+  commit*. Check `/healthz` = 200 and the snapshot date on the site. Then copy `prev.b64` over
+  `output/site_snapshot.uploaded.b64` so the next publish keeps the right rollback copy.
+- **Code:** revert the pull request on `development` (GitHub *Revert* button → merge), then *Manual Deploy*; or in the
+  Render dashboard pick the previous deploy under *Events* and choose *Rollback* (this restores the code build; the
+  Secret File stays as it is).
+- An encrypted copy of the final snapshot and submission exports is kept off-repo (macOS Keychain item
+  `deal-radar-backup` holds its password).
+
+See [`HANDOFF.md`](HANDOFF.md) for the hand-over checklist and [`docs/ROADMAP.md`](docs/ROADMAP.md) for what comes next.
+
+---
 
 ---
 
@@ -128,7 +190,7 @@ Based on Bloomfield's examples and the 3 past deals.
 | 5 | **Bankruptcy** | Chapter 11 by owner/operator | Late |
 | 6 | **Receivership / deed-in-lieu** | Court-appointed receiver; lender takeback | Late |
 | 7 | **Operator turnover** | 2+ operators in a few years; "new management" | Early–Late |
-| 8 | **Low occupancy** | e.g., 40% (deal 1); SNF 27% (deal 3) | Early |
+| 8 | **Low occupancy** | well below the market average (threshold in `config/thresholds.yaml`) | Early |
 | 9 | **Negative NOI / losses** | Operating at a loss | Early–Middle |
 | 10 | **Price collapse** | Sale $/unit far below prior loan $/unit | Sale |
 
@@ -198,9 +260,12 @@ Based on Bloomfield's examples and the 3 past deals.
 | **5. Backtest + demo** | Requirement #5; present to Bloomfield | Demo + results |
 | *Stretch* | Engine B (delayed openings), DSCR screen on licensed loan data, weekly email digest | — |
 
+**Status (Nov 11, 2026):** phases 1–5 are done and the site is live (see [Final state](#final-state-nov-11-2026)).
+Next steps are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## 12. Repo Structure
 
-**Stack:** Supabase (Postgres) for all data · Python 3.11 loaders built by Claude Code subagents in waves (see `docs/EXECUTION_PLAYBOOK.md`) · the React website reads one public view of ranked leads.
+**Stack:** Supabase (Postgres) for all data · Python 3.11 loaders built by Claude Code subagents in waves (see `docs/EXECUTION_PLAYBOOK.md`) · the website (`src/web/`) is a password-protected static snapshot of the public view of ranked leads, served on Render.
 
 **Data model: two hubs.** Every source attaches to one of two hubs, never to each other:
 - **Hub 1, `core.facility`:** the building. Matched exactly on CMS CCN or license number, otherwise fuzzily on name + address (address counts more, because facilities get renamed after a sale).
@@ -220,7 +285,8 @@ Based on Bloomfield's examples and the 3 past deals.
 │   ├── extract/             # Claude extraction prompts + schema
 │   ├── enrich/              # facility/organization matching (the two hubs)
 │   ├── score/               # signals, buyer linking, scoring
-│   └── App.jsx, lib/, data/ # the website
+│   ├── web/                 # Deal Radar site: snapshot builder, publish command, server, static map UI
+│   └── App.jsx, lib/, data/ # older Vite starter page (not the Deal Radar site)
 ├── tests/                   # pytest
 ├── eval/                    # test articles, reports, backtest (eval/private/ is gitignored)
 └── output/                  # lead list CSVs
@@ -237,6 +303,7 @@ Based on Bloomfield's examples and the 3 past deals.
 | Match to buildings / companies | `python -m src.enrich` |
 | Score + lists | `python -m src.score`, then `python -m src.score.takeovers` |
 | Demo exports | `python -m src.score.final_exports` → `output/list_A_live_deals.csv`, `list_B_presale_distress.csv`, `list_C_repeat_buyers.csv`, `top_20_for_handcheck.csv` |
+| Website | `python -m src.web.publish` (dry run), then `python -m src.web.publish --confirm` (upload + deploy); see [Final state](#final-state-nov-11-2026) |
 
 Bloomfield-facing outputs use the public view only; licensed facts stay in the private schema and in `INTERNAL_*` files.
 

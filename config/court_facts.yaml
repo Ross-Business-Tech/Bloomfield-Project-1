@@ -35,14 +35,14 @@ links:
 sales:
   # Rochester Manor OpCo et al. (W.D. Pa. 26-22481): the sale motion was withdrawn and bidding procedures vacated
   # (Dkt. 251); on Nov 5, 2026 the court entered a Settlement and Transfer Order (Dkt. 291): $790,000 settlement and
-  # operations transfer to Focus Health Network-connected operators, closing milestone Nov 13 (Dkt. 258).
+  # operations transfer to Focus-affiliated operators (ElevenFlo's wording), closing milestone Nov 13 (Dkt. 258).
   # The four stalking-horse entities are dropped (sale withdrawn; facility mapping was guessed from names).
   - case: "pawb:26-22481"
     stage_text: sale order
     event_date: 2026-11-05
-    evidence_text: "Nov 5, 2026 Settlement and Transfer Order (Dkt. 291): $790,000 settlement and operations transfer to Focus Health Network-connected operators (unnamed); sale motion withdrawn (Dkt. 251). Source: ElevenFlo docket summary, not verified against the order."
+    evidence_text: "Nov 5, 2026 Settlement and Transfer Order (Dkt. 291): $790,000 settlement and transfer of operations to Focus-affiliated operators (unnamed); sale motion withdrawn (Dkt. 251). Source: ElevenFlo docket summary, not verified against the order."
     source_url: https://elevenflo.com/cases/rochester-manor-opco-llc-19234
-    buyer_all_homes: "Focus Health Network-connected operators (unnamed)"
+    buyer_all_homes: "Focus-affiliated operators (unnamed)"
     buyer_status: candidate          # transferees are not named in anything we could read
 
 # buyers: hand-checked buyer for one facility (by CCN, or by `case` for a hand-entered facility below).
@@ -299,6 +299,37 @@ facilities:
     source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
 
 # excluded_sale_evidence: machine-found sale evidence that belongs to a different case.
+# public_events: hand-checked PUBLIC distress events for one facility (by `case` hand-entry or `ccn`). Each needs a
+#   public source_url. signal_type: foreclosure | lender_takeback | price_collapse | closure | receivership | ...
+#   value (optional), flags (optional, copied onto the lead), lender / owner_after (context only: a lender is never
+#   the buyer). Read by src/score/signals.py public_event_signals.
+public_events:
+  # Artemis Living at Littleton (Granite Senior Services, LLC, D.N.H. 26-10275). The campus at 1262 Saint Johnsbury
+  # Road was still being built (Chamber profile: opening spring 2026).
+  - case: "nhb:26-10275"
+    signal_type: foreclosure
+    event_date: 2026-09-24
+    evidence_text: "Notice of Foreclosure Sale dated Sep 24, 2026: Service Federal Credit Union (d/b/a Service Credit Union), mortgagee, will sell 1262 Saint Johnsbury Road, Littleton NH (Lots 1 and 2) at public auction on Oct 29, 2026, under the mortgage given by Granite Senior Services, LLC (Jun 30, 2022)."
+    source_url: https://paulmcinnis.com/media/ct1fviqr/notice-of-foreclosure-sale-lots-1-and-2.pdf
+    lender: "Service Credit Union"
+    flags: [borrower_name_mismatch, address_unconfirmed]   # notice: Granite Senior Services, LLC; news: Granite Senior Operations LLC;
+                                      # no public source gives Artemis's street address to match 1262 Saint Johnsbury Rd
+  - case: "nhb:26-10275"
+    signal_type: lender_takeback
+    event_date: 2026-10-29
+    evidence_text: "Service Credit Union, the foreclosing lender, bought the unfinished Littleton senior living campus for $13.5M at the Oct 29, 2026 auction (Moo92). The lender now owns it; it is not a buyer."
+    source_url: https://moo92.com/credit-union-buys-littleton-senior-living-campus-for-13-5-million-in-auction/
+    lender: "Service Credit Union"
+    owner_after: "Service Credit Union (lender takeback)"
+    flags: [borrower_name_mismatch, address_unconfirmed]
+  - case: "nhb:26-10275"
+    signal_type: price_collapse
+    event_date: 2026-10-29
+    value: 0.47                       # $13.5M winning bid / $29M construction loan
+    evidence_text: "Winning auction bid $13.5M against the $29M construction loan Service Credit Union made to Granite Senior Operations LLC (about 47% of the loan) (Moo92)."
+    source_url: https://moo92.com/credit-union-buys-littleton-senior-living-campus-for-13-5-million-in-auction/
+    flags: [borrower_name_mismatch, address_unconfirmed]
+
 excluded_sale_evidence:
   - case: "mieb:25-43883"    # Mission Point of Detroit, LLC (Ch. 11)
     source_url: https://skillednursingnews.com/2025/11/skilled-nursing-dealbook-mission-point-operations-sold-for-10-plus-liabilities-cfg-closes-350-9m-in-sales

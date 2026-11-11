@@ -19,3 +19,12 @@ def test_no_buyer_is_never_capped_and_parent_groups_shells():
     order, capped = diversity_order(rs, top_n=3, per_buyer=2)
     assert capped == {"2"} and order[-1]["lead_id"] == "2"
     assert diversity_order(rows(["NOT FOUND"] * 4), top_n=3, per_buyer=1)[1] == set()
+
+
+def test_ties_break_on_latest_event_then_lead_id():
+    from src.score.diversity import display_sort
+    rs = [{"lead_id": "b", "score": 75, "score_breakdown": {"latest_signal_date": "2026-01-01"}},
+          {"lead_id": "a", "score": 75, "score_breakdown": {"latest_signal_date": "2026-01-01"}},
+          {"lead_id": "c", "score": 75, "score_breakdown": {"latest_signal_date": "2026-10-29"}},
+          {"lead_id": "d", "score": 80, "score_breakdown": {}}]
+    assert [r["lead_id"] for r in display_sort(rs)] == ["d", "c", "a", "b"]
