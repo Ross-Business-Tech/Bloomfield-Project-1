@@ -275,6 +275,9 @@ class Sig:
     family_name: str | None = None
     flags: list[str] = field(default_factory=list)
     confirmed_by: str | None = None      # court links: see DIRECT_CONFIRMATIONS; None = matched by name only
+    sale_status: str | None = None       # 'approved' (court sale order) / 'closed' (a public source reports the closing)
+    sale_date: date | None = None        # date of that order / closing (None = date NOT FOUND)
+    sale_month_only: bool = False        # the source gives a month ("January 2026"), not a day
 
     @property
     def distress(self) -> bool:
@@ -453,3 +456,98 @@ _HARD_EVENTS = ("chapter_11", "chapter_7", "receivership", "foreclosure", "deed_
 def hard_events() -> tuple:
     """Signal types that alone put a home on the main list (scoring.hard_events in thresholds.yaml wins)."""
     return tuple(cfg().get("scoring", {}).get("hard_events") or _HARD_EVENTS)
+
+
+# ── sale status (Nov 11 hand check): a sale that a court approved or that closed is not "in a sale" any more ──────
+SALE_STATUS_LABEL = {"approved": "Sale approved", "closed": "Closed / sold"}
+_SALE_CLOSED_WORDS = re.compile(
+    r"\b(was sold|were sold|has been sold|have been sold|sold (?:on |in |the |its |to |\w+\.? \d)|it sold|"
+    r"sale (?:has |was )?(?:closed|completed|finali[sz]ed)|closed on|clos(?:e|ed|ing) (?:of )?the (?:transaction|sale|deal)|"
+    r"(?:facilitated|arranged|brokered|completed|closed|announced) the (?:[\w$.-]+ ){0,4}sale|"
+    r"(?:has |have )?(?:acquired|purchased|bought)|completed (?:its|the) (?:acquisition|purchase))\b", re.I)
+_SALE_OPEN_WORDS = re.compile(r"\b(to be sold|will be sold|being sold|for sale|plans? to|intends? to|seeks?|pending|"
+                              r"under contract|stalking|bidder|bid|expected to|agreed to|letter of intent|proposed)\b", re.I)
+
+
+def court_sale_status(stage_text: str | None) -> str | None:
+    return {"sale order": "approved", "sale closed": "closed"}.get(stage_text or "")
+
+
+def news_reports_closing(text: str | None) -> bool:
+    """A news item that reports a finished sale ("was sold Sept. 8", "facilitated the receivership sale of ...").
+    Words about a sale still to come (bid, pending, to be sold) win: then the sale is not reported as closed."""
+    t = text or ""
+    return bool(_SALE_CLOSED_WORDS.search(t)) and not _SALE_OPEN_WORDS.search(t)
+
+
+_SLUG_STOP = {"llc", "inc", "lp", "llp", "dst", "the", "of", "at", "and", "co", "corp", "company", "holdings"}
+
+
+def docket_names_other_case(url: str | None, *names) -> bool:
+    """True when a CourtListener docket link's own case name (the slug) shares no distinctive word with any of
+    `names` (the case's debtor, the family, the facility, its city): the link belongs to another debtor / property."""
+    m = re.search(r"courtlistener\.com/docket/\d+/([a-z0-9-]+)", url or "")
+    if not m:
+        return False
+    slug = {w for w in m[1].split("-") if w not in _SLUG_STOP and not w.isdigit() and len(w) > 2}
+    if not slug:
+        return False
+    for n in names:
+        words = {w for w in re.sub(r"[^a-z0-9 ]", " ", (n or "").lower()).split() if w not in _SLUG_STOP and len(w) > 2}
+        if words and (slug <= words or words <= slug):
+            return False
+    return True
+
+
+def buyer_in_property_section(body: str | None, property_name: str | None, buyer: str | None) -> bool | None:
+    """Roundup rule: in an article with several deal sections, the buyer must be named in the same section as the
+    property. None = cannot tell (one section only, or the property is not named in the text)."""
+    from src.extract.split import _is_heading
+    paras = [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    sections, cur = [], []
+    for p in paras:
+        if _is_heading(p) or (len(p.split()) <= 8 and not re.search(r"[.!?:;,]$", p)):
+            if cur:
+                sections.append(cur)
+            cur = [p]
+        else:
+            cur.append(p)
+    if cur:
+        sections.append(cur)
+    if len(sections) < 2:
+        return None
+    key = lambda v: re.sub(r"[^a-z0-9 ]", " ", re.sub(r"^the\s+", "", (v or "").lower())).strip()   # noqa: E731
+    prop = key(property_name)
+    b = next((w for w in key((buyer or "").split(";")[0]).split() if w not in _SLUG_STOP and len(w) >= 4), "")
+    if not prop or not b:
+        return None
+    texts = [key(" ".join(s)) for s in sections]
+    mine = [t for t in texts if prop in t]
+    if not mine:
+        return None
+    return any(b in t for t in mine)
+
+
+_OVERRIDES = Path(__file__).resolve().parents[2] / "config" / "manual_overrides.yaml"
+
+
+def manual_overrides() -> list[dict]:
+    """Hand-check overrides (config/manual_overrides.yaml). Every entry needs a public source_url and a date."""
+    if not _OVERRIDES.exists():
+        return []
+    items = (yaml.safe_load(_OVERRIDES.read_text()) or {}).get("overrides") or []
+    for o in items:
+        if not str(o.get("source_url", "")).startswith(("http://", "https://")) or not o.get("date"):
+            raise ValueError(f"config/manual_overrides.yaml: every override needs a public source_url and a date ({o.get('match')})")
+        if not (o.get("match") or {}).get("ccn") and not (o.get("match") or {}).get("name"):
+            raise ValueError(f"config/manual_overrides.yaml: match needs ccn or name/city/state ({o})")
+    return items
+
+
+def sale_date_month_only(sale: dict) -> bool:
+    """True when the evidence dates the order / closing by month only ('approved the sale in January 2026')."""
+    text = sale.get("evidence_text") or ""
+    if re.search(r"\d{4}-\d{2}-\d{2}", text):
+        return False
+    m = re.search(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2},?\s+)?\d{4}\b", text, re.I)
+    return bool(m) and not m[1]
