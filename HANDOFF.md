@@ -7,6 +7,7 @@
 - 仓库：`Ross-Business-Tech/Bloomfield-Project-1`；工作分支：`claude/keen-hamilton-q0d2fv`；PR 目标：`development`，不要推到 `main`。
 - 用户最新布局要求优先：导航顺序为 **Dashboard → Overview → How it works → Explore**。Dashboard 展示地图和楼宇清单；Overview 把关键数字和原 Funnel 合为一页。旧 `#/funnel` 链接进入 Overview。
 - 四页共用最大 1920px 的页面框架、边距和标题位置。所有文字统一为正文的 Inter / 等线风格无衬线字体；桌面标题 30px、小标题 20px、正文 14px、表格 13px、表头 12px。桌面 1280 / 1440 / 1920px 下清单全部列可见；手机保留表格内部滚动。
+- `NOT FOUND` 必须完整显示在一行内；Care type 和 Units 列已加宽，不允许把缺失值标签折成两行。
 - Overview 只在顶部展示一组 List A/B/C，可点击数字区域进入清单；删除了右侧介绍和双按钮、底部重复卡片。每次进入 Overview 都重播标题、数字和依次出现的漏斗动画，离开页面取消未完成动画。条形从上至下由浅蓝渐变至海军蓝，强调最后的 Shown on Deal Radar；减少动态效果偏好会直接展示最终值。
 - [PR #12](https://github.com/Ross-Business-Tech/Bloomfield-Project-1/pull/12) 当前仅供预览审核。用户明确要求不合并，请勿自动合并或部署。
 - 保留联系方式面板、来源与日期、电话列、List B 无 Buyer 列，以及 A/B 共同列宽一致。新增键盘页签切换、详情焦点限制和关闭后焦点恢复。
@@ -99,7 +100,7 @@ npm run preview:radar
 
 Windows 可以把 `PYTHON` 设为项目虚拟环境的 `python.exe`，并设置 `PYTHONUTF8=1`；Unix 可以指定 `.venv/bin/python`。不要提交本机工具路径。`build:radar`、`smoke:radar`、`preview:radar` 均支持 Windows 和 Unix。
 
-当前临时预览：[Dashboard](https://inner-prana-3nn7.here.now/) · [Overview](https://inner-prana-3nn7.here.now/#/overview)。匿名预览初次发布后约 24 小时到期；如失效，运行上面的发布命令，使用命令新打印的链接。认领链接只发给用户，不放进公开仓库。
+当前临时预览：[Dashboard](https://opaque-lotus-h5jk.here.now/) · [Overview](https://opaque-lotus-h5jk.here.now/#/overview)。匿名预览初次发布后约 24 小时到期；如失效，运行上面的发布命令，使用命令新打印的链接。认领链接只发给用户，不放进公开仓库。
 
 ## 不能改动或提交
 

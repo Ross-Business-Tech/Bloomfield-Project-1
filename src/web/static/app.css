@@ -180,7 +180,7 @@ table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: va
 table.grid { table-layout: fixed; min-width: 1120px; }
 table.grid.x { min-width: 1120px; }
 .c-rank { width: 42px; } .c-state { width: clamp(120px, calc(10vw - 8px), 184px); }
-.c-care { width: clamp(76px, calc(3.75vw + 28px), 100px); } .c-units { width: 76px; }
+.c-care { width: clamp(96px, calc(3.75vw + 48px), 120px); } .c-units { width: 96px; }
 .c-signals { width: clamp(156px, calc(10vw + 28px), 220px); } .c-stage { width: clamp(76px, calc(3.75vw + 28px), 100px); }
 .c-buyer { width: clamp(160px, calc(16vw - 44.8px), 262.4px); } .c-score { width: clamp(100px, calc(5vw + 36px), 132px); }
 .c-contact { width: clamp(136px, calc(3.75vw + 88px), 160px); } .c-homes { width: 120px; }
@@ -217,7 +217,7 @@ td.rank { color: var(--muted); font-variant-numeric: tabular-nums; }
 .scorebar .v { font-variant-numeric: tabular-nums; width: 30px; text-align: right; }
 .nf { background: var(--amber-soft); color: var(--amber); border-radius: 5px; padding: 0 6px; font-size: 12px;
   font-weight: 500; white-space: nowrap; }
-.grid .nf { display: inline-block; max-width: 100%; white-space: normal; font-size: 11px; line-height: 1.4; padding: 2px 4px; }
+.grid .nf { display: inline-block; white-space: nowrap; font-size: 11px; line-height: 1.4; padding: 2px 4px; }
 .tel { font-weight: 500; color: var(--ink); text-decoration: none; white-space: nowrap; border-bottom: 1px solid var(--brass); }
 .tel:hover { background: #f6efe1; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); }
