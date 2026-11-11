@@ -60,9 +60,27 @@ def test_every_page_needs_the_password(site, path):
 def test_pages_with_password_are_noindex(site):
     code, headers, body = get(site + "/", PW)
     assert code == 200 and headers["X-Robots-Tag"] == "noindex, nofollow"
-    assert '<meta name="robots" content="noindex, nofollow">' in body
-    assert "&lt;b&gt;Acme" in body and "<b>Acme" not in body
+    assert '<meta name="robots" content="noindex, nofollow">' in body and "<title>Deal Radar</title>" in body
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    code, _, body = get(site + "/api/snapshot.json", PW)
+    data = json.loads(body)
+    assert code == 200 and set(data) == {"generated_at", "counts", "items", "list_c"}
+    assert {i["property"] for i in data["items"]} == {"<b>Acme Manor</b>", "Birch Home"}   # rendered as text in the UI
+    assert get(site + "/static/app.js", PW)[0] == 200 and get(site + "/static/../server.py", PW)[0] == 404
     assert get(site + "/api/list_a.json", PW)[0] == 200
+
+
+def test_front_end_never_parses_data_as_html_and_names_no_partner():
+    static = Path(server.__file__).parent / "static"
+    js = (static / "app.js").read_text()
+    assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "document.write" not in js
+    for f in [*static.glob("*.html"), *static.glob("*.js"), *static.glob("*.css"),
+              *Path(server.__file__).parent.glob("*.py"), Path("render.yaml")]:
+        assert "bloomfield" not in f.read_text().lower(), f
+    html_text = (static / "index.html").read_text()
+    for src in re.findall(r'<script src="(https://[^"]+)"', html_text):     # CDN scripts pinned + integrity-checked
+        assert re.search(r"@\d+\.\d+\.\d+/", src), src
+    assert html_text.count('integrity="sha384-') == html_text.count('<script src="https://')
 
 
 def test_robots_and_health_are_the_only_open_paths(site):
@@ -92,6 +110,9 @@ def test_snapshot_has_no_licensed_fields_and_no_past_deal_homes():
     snap = snapshot.build(ROWS, {"past-deal"})
     _check_snapshot(snap, ["Past Deal Home"])
     assert snap["counts"] == {"leads": 2, "list_a": 2, "list_b": 0, "list_c": 1}
+    assert [i["lists"] for i in snap["items"]] == [["A"], ["A"]]
+    assert snap["items"][0]["sources"] == ["https://a.example/1"]                  # licensed links dropped
+    assert all("breakdown" in i and "licensed_buyer" not in i["breakdown"] for i in snap["items"])
     assert snap["list_c"][0]["buyer"] == "Buyer Co" and snap["list_c"][0]["homes_in_list"] == 2
     assert snap["list_a"][0]["public_source_link"] == "https://a.example/1"      # licensed buyer link dropped
 
