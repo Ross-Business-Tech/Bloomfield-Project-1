@@ -87,6 +87,7 @@
   function route() {
     const listRoute = /^#\/leads(?:\/([ABC]))?$/.exec(location.hash);
     const v = VIEWS[location.hash] || "dashboard";
+    stopOverviewMotion();
     S.view = v;
     for (const id of ["dashboard", "overview", "how", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
     document.querySelectorAll(".nav a").forEach((a) => {
@@ -103,7 +104,7 @@
       $("lists").scrollIntoView({ behavior: REDUCED ? "instant" : "smooth", block: "start" });
       $("lists").focus({ preventScroll: true });
     } else window.scrollTo({ top: 0, behavior: "instant" });
-    if (v === "overview") animateHero();
+    if (v === "overview") animateOverview();
   }
 
   function buildHow() {
@@ -146,47 +147,64 @@
   }
 
   function buildFunnel() {
-    const all = S.data.funnel || [], F = all.filter((f) => !f.list);
+    const F = (S.data.funnel || []).filter((f) => !f.list);
     const max = d3.max(F, (f) => f.count) || 1;
     const w = d3.scaleLog().domain([1, max]).range([0.03, 1]).clamp(true);
-    $("funnel").replaceChildren(...F.map((f, i) => el("div", { class: "frow" },
-      el("div", { class: "lab" }, el("span", { class: "cnt", text: fmtInt(f.count), "data-n": f.count }),
-        el("span", { class: "t" }, f.list ? [el("span", { class: "dot " + f.list.toLowerCase() }), " "] : null, f.step)),
-      el("div", { class: "barbox" }, el("div", { class: "fbar" + (f.list ? " " + f.list.toLowerCase() : ""),
-        style: "--w:" + (f.count > 0 ? w(f.count).toFixed(4) : "0") + ";--i:" + i, title: f.step + ": " + fmtInt(f.count) })),
-      el("div", { class: "rule-t", text: f.rule }))));
-    $("list-entry").replaceChildren(...TABS.map((t) => {
-      const f = all.find((row) => row.list === t.key);
-      const count = t.key === "C" ? (S.data.list_c || []).length : S.data.items.filter((r) => r.lists.includes(t.key)).length;
-      const label = { A: "Live deals", B: "Pre-sale distress", C: "Repeat buyers" }[t.key];
-      return el("a", { class: "entry " + t.cls, href: "#/leads/" + t.key },
-        el("span", { class: "entry-title", text: "List " + t.key + ": " + label }),
-        el("span", { class: "entry-count", text: fmtInt(count) }),
-        el("span", { class: "entry-rule", text: f ? f.rule : label }),
-        el("span", { class: "entry-action", text: t.key === "C" ? "View buyers" : "View properties" }));
+    const shade = d3.interpolateRgb("#adc6df", "#0b1f3a");
+    $("funnel").replaceChildren(...F.map((f, i) => {
+      const final = f.step === "Shown on Deal Radar", color = shade(i / Math.max(1, F.length - 1));
+      return el("div", { class: "frow" + (final ? " is-final" : ""), style: "--i:" + i },
+        el("div", { class: "lab" }, el("span", { class: "cnt", text: fmtInt(f.count), "data-n": f.count }),
+          el("span", { class: "t", text: f.step })),
+        el("div", { class: "barbox", "aria-hidden": "true" }, el("div", { class: "fbar",
+          style: "--w:" + (f.count > 0 ? w(f.count).toFixed(4) : "0") + ";--bar-color:" + color +
+            ";--bar-top:" + d3.interpolateRgb(color, "#fff")(0.15) })),
+        el("div", { class: "rule-t", text: f.rule }));
     }));
   }
 
-  /* Animate once when each group first becomes visible, including after entering on another route. */
-  function countUp(node) {
-    const n = Number(node.dataset.n);
-    if (REDUCED || !isFinite(n) || n < 2) return;
-    const suffix = node.dataset.suffix || "", t0 = performance.now(), dur = 900;
-    node.textContent = "0" + suffix;
-    const tick = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      node.textContent = fmtInt(Math.round(n * e)) + suffix; if (k < 1) requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
+  /* Replay on each Overview visit; cancel pending work when leaving or quickly switching pages. */
+  let overviewObservers = [];
+  const overviewFrames = new Set();
+  function motionFrame(callback) {
+    const id = requestAnimationFrame((t) => { overviewFrames.delete(id); callback(t); });
+    overviewFrames.add(id);
   }
-  function animateHero() {
+  function stopOverviewMotion() {
+    overviewObservers.forEach((observer) => observer.disconnect());
+    overviewObservers = [];
+    overviewFrames.forEach(cancelAnimationFrame);
+    overviewFrames.clear();
+  }
+  function countUp(node, delay = 0) {
+    const n = Number(node.dataset.n);
+    if (!isFinite(n)) return;
+    const suffix = node.dataset.suffix || "";
+    if (REDUCED || n < 2) { node.textContent = fmtInt(n) + suffix; return; }
+    const t0 = performance.now() + delay, dur = 800;
+    node.textContent = "0" + suffix;
+    const tick = (t) => { const k = Math.max(0, Math.min(1, (t - t0) / dur)), e = 1 - Math.pow(1 - k, 3);
+      node.textContent = fmtInt(Math.round(n * e)) + suffix; if (k < 1) motionFrame(tick); };
+    motionFrame(tick);
+  }
+  function animateOverview() {
+    const view = $("view-overview");
+    view.classList.remove("overview-enter");
+    for (const id of ["kpis", "funnel"]) $(id).classList.remove("in");
+    // Commit the reset before restarting CSS animations, including repeated clicks on Overview.
+    void view.offsetWidth;
+    view.classList.add("overview-enter");
     for (const id of ["kpis", "funnel"]) {
       const group = $(id);
-      if (group.dataset.observed) continue;
-      group.dataset.observed = "true";
-      const go = () => { group.classList.add("in"); group.querySelectorAll("[data-n]").forEach(countUp); };
+      const go = () => {
+        group.classList.add("in");
+        group.querySelectorAll("[data-n]").forEach((node, i) => countUp(node, id === "kpis" ? 100 + i * 40 : 360 + i * 100));
+      };
       if (REDUCED || !("IntersectionObserver" in window)) { go(); continue; }
       const observer = new IntersectionObserver((entries) => {
         if (entries.some((e) => e.isIntersecting)) { observer.disconnect(); go(); }
       }, { threshold: 0.1 });
+      overviewObservers.push(observer);
       observer.observe(group);
     }
   }
@@ -268,8 +286,9 @@
       ["States covered", fmtInt(states), "with at least one lead", null, states, ""],
       ["Named buyer", n ? Math.round((100 * named) / n) + "%" : "–", fmtInt(named) + " confirmed in a source", null, n ? Math.round((100 * named) / n) : null, "%"],
     ];
-    $("kpis").replaceChildren(...cards.map(([label, value, sub, dot, num, suffix]) =>
-      el("div", { class: "kpi" },
+    $("kpis").replaceChildren(...cards.map(([label, value, sub, dot, num, suffix], i) =>
+      el(dot ? "a" : "div", { class: "kpi", style: "--i:" + i,
+        href: dot ? "#/leads/" + dot.toUpperCase() : null, "aria-label": dot ? label + ": " + sub : null },
         el("div", { class: "label" }, dot ? el("span", { class: "dot " + dot }) : null, label),
         el("div", { class: "value", text: value, "data-n": num, "data-suffix": suffix }),
         el("div", { class: "sub", text: sub }))));
@@ -594,7 +613,7 @@
   $("scrim").addEventListener("click", closePanel);
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[href]");
-    if (a && a.hash === location.hash && /^#\/leads(?:\/[ABC])?$/.test(a.hash)) {
+    if (a && a.hash === location.hash && (/^#\/leads(?:\/[ABC])?$/.test(a.hash) || a.hash === "#/overview")) {
       e.preventDefault(); route();
     }
   });

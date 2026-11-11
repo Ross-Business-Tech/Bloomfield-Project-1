@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B1F3A'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23C9A66B'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -33,46 +33,29 @@
   <div class="wrap load-error hidden" id="load-error" role="alert"></div>
 
   <main class="view hidden" id="view-overview">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="wrap">
-        <div class="hero-intro">
-          <div><p class="hero-kicker">Overview · Senior housing and skilled nursing</p>
-            <h1 id="hero-title">Your market at a glance.</h1></div>
-          <div class="hero-summary">
-            <p class="hero-lede">Review public distress signals, see who is buying, and contact the property.
-              Every lead links to its evidence.</p>
-            <div class="hero-actions">
-              <a class="btn primary" href="#/leads/A">View live deals</a>
-              <a class="btn outline" href="#/leads/B">View pre-sale distress</a>
-            </div>
-          </div>
-        </div>
-        <section class="kpis" id="kpis" aria-label="Key numbers"></section>
-      </div>
-    </section>
-    <section class="screening" aria-labelledby="screening-title">
-      <div class="wrap">
-        <div class="funnel-block" id="funnel-block">
-          <div class="funnel-head">
-            <h2 id="screening-title">From public signals to your next conversation</h2>
-            <p>See how properties reach the main list, then choose where to start.</p>
-          </div>
-          <div id="funnel" class="funnel"></div>
-          <p class="funnel-note">Bar lengths use a log scale. The watch list is a separate group; these counts are not additive.</p>
-          <div class="list-entry" id="list-entry" aria-label="Open a property or buyer list"></div>
-        </div>
-      </div>
-    </section>
-
+    <div class="wrap page">
+      <header class="page-head">
+        <h1>Market overview</h1>
+        <p>Senior housing and skilled nursing, from public signals to actionable leads.</p>
+      </header>
+      <section class="card overview-summary" aria-label="Key numbers">
+        <div class="kpis" id="kpis"></div>
+      </section>
+      <section class="card prose screening" aria-labelledby="screening-title">
+        <h2 id="screening-title">From public signals to Deal Radar</h2>
+        <p class="muted">How properties reach the main list.</p>
+        <div id="funnel" class="funnel"></div>
+        <p class="funnel-note">Bar lengths use a log scale. The watch list is a separate group; these counts are not additive.</p>
+      </section>
+    </div>
   </main>
 
   <main class="view" id="view-dashboard">
     <div class="wrap page">
-      <div class="dashboard-head">
+      <header class="page-head">
         <div><h1>Property dashboard</h1>
           <p class="muted">Explore public leads by location, review the evidence, and contact the property.</p></div>
-        <a class="btn" href="#/overview">View market overview</a>
-      </div>
+      </header>
       <section class="card map-card">
         <div class="card-head">
           <div>
@@ -124,9 +107,13 @@
 
   <main class="view hidden" id="view-how">
     <div class="wrap page">
-      <section class="card prose">
+      <header class="page-head">
         <h1>How it works</h1>
-        <p class="lede">Deal Radar reads public records and news about senior housing, links every fact to the building it
+        <p>How public records become property leads, with evidence behind every score.</p>
+      </header>
+      <section class="card prose">
+        <h2>From records to leads</h2>
+        <p>Deal Radar reads public records and news about senior housing, links every fact to the building it
           is about, and ranks the buildings that show distress. Every lead links back to its sources.</p>
         <div class="pipeline" id="pipeline" aria-label="Pipeline"></div>
       </section>
@@ -154,9 +141,13 @@
 
   <main class="view hidden" id="view-explore">
     <div class="wrap page">
+      <header class="page-head">
+        <h1>Explore the watch list</h1>
+        <p>Buildings with public distress signals that do not yet meet the main-list bar.</p>
+      </header>
       <section class="card list-card">
-        <div class="card-head"><div><h1 class="h2">Explore the watch list</h1>
-          <p class="muted">Buildings with public distress signals that do not (yet) meet the main-list bar. Each row says why.</p></div></div>
+        <div class="card-head"><div><h2>Watch-list properties</h2>
+          <p class="muted">Each row explains why the property is below the main-list bar.</p></div></div>
         <div class="filters">
           <input type="search" id="x-search" placeholder="Search property, city, buyer" aria-label="Search watch list">
           <select id="x-state" aria-label="State"></select>
