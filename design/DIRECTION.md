@@ -1,48 +1,58 @@
-# Deal Radar: design direction (ui-v2)
+# Deal Radar: design direction (ui-v2, map-first)
 
 ## The concept, in five lines
-1. **A Monday briefing, not a dashboard.** The first screen is one sentence: how many leads, as of when, and the three to start with.
-2. **The originator's workflow is the navigation.** Where should I look → what is happening at this property → who is taking it over → can I trust this → who do I contact.
-3. **Think in buyers as well as buildings.** The lender's borrower is usually the buyer or new operator, so buyers get their own view.
-4. **Every claim shows its source; every gap says NOT FOUND.** Amber is reserved for "no source states this". Nothing is estimated.
-5. **Quiet by default.** Paper, ink, hairlines, one blue. A table exists, but you ask for it.
+1. **The map is the product.** Everything else is a layer you drill into: USA, state, city, property, research.
+2. **A tool, not a page.** One fixed console: a rail of numbers and layer toggles, the map, a slim list. No sentences on the main path.
+3. **Four clicks to a phone number.** State, city, property, Call. Search jumps straight to any layer.
+4. **Every claim shows its source; every gap says NOT FOUND.** Amber is reserved for "no source states this", including map positions and phone numbers. Nothing is estimated.
+5. **Paper, ink, one blue.** The radar feel comes from behaviour (zoom, range rings, pings, breadcrumb), not from decoration.
 
-## Workflow map (each screen answers one question)
-| Question | Screen | What is visible without scrolling or clicking |
-|---|---|---|
-| Where should I look? | **This week** (landing) | Lead count, as-of date, and three leads to start with (highest-ranked live deals, one per buyer), each with stage, buyer status and phone. Below: counts that link to List A, List B, Buyers and Map, and how the list was narrowed. |
-| Where should I look? (by geography) | **Map** | Leads by state; choosing a state lists its top leads and carries the state filter into Leads. |
-| What is happening at this property? | **Leads** | Brief rows: rank, property, city/state, size, care type, stage, buyer status, score and a one-line "why". Filters: list A/B/C, state, stage, care type (senior housing vs SNF), buyer status, search. Sortable table on request. |
-| All five, for one property | **Lead detail** (drawer over the list) | Reads top to bottom in workflow order: 1 Why this lead → 2 What is happening (signals with plain-English definitions, every source link) → 3 Who is taking it over (buyer, status, track record, other leads tied to the buyer) → 4 Who to contact (tap-to-call, website, address to maps, or NOT FOUND) → 5 Score breakdown. `↑`/`↓` step through the list, `Esc` closes, the list keeps its place. "Copy summary" puts a plain-text summary on the clipboard. |
-| Who is taking it over? | **Buyers** | Leads grouped by buyer: status (Named / Candidate · not final / Unverified), number of leads, states, care types, repeat-buyer record where there is one, and a link to each lead. Most leads first. |
-| Can I trust this? | **The numbers** | Key ratios in one ruled line, and the screening funnel with the rule applied at each step. |
-| Can I trust this? | **How it works** | Four steps, what gets filtered out (buildings → distress signal → leads → short list), the NOT FOUND policy, scoring rules, sources, and a plain-English glossary. |
-| Who do I contact? | **Lead detail, step 4**; phone column in the table | Business lines only, each with its source and check date. |
+## Layers (each click goes one level deeper; Esc, the breadcrumb or the Back button goes up)
+| Layer | URL | What is on screen | Originator's question |
+|---|---|---|---|
+| L0 USA | `#/map` | States shaded by lead count. Three numbers: leads, states, buyer named. Layer toggles A / B / C. | Where should I look? |
+| L1 State | `#/map/PA` | Animated zoom to the state. City bubbles sized by lead count (when leads carry coordinates), otherwise a ranked city list. Slim list of the state's leads: name, city, size, stage, buyer status, phone. | Where should I look? |
+| L2 City | `#/map/PA/pittsburgh` | Property pins: size = units or beds, colour = stage, a slow ping on late-stage or buyer-named pins, range rings for scale. Other cities stay as quiet dots. | What is happening here? |
+| L3 Property | `#/map/PA/pittsburgh/r4` | A card: property, place, size, care type, one-line why, stage and buyer chips, "fits $3-30M" chip when the size-fit rule applies, and two buttons: **Call** (or amber Phone NOT FOUND) and **Research**. | Who is taking it over? Who do I contact? |
+| L4 Research | `.../r4/research` | The lead detail drawer, unchanged: 1 why, 2 what is happening + sources, 3 who is taking it over, 4 who to contact, 5 score breakdown. | Can I trust this? |
 
-The **Watch list** (buildings below the bar) stays, linked from Leads, but is out of the main navigation: it is not part of the Monday routine.
+Always visible: **search** (property, buyer, city or state; Enter jumps to that layer) and the **breadcrumb** (USA > State > City > Property). The layer toggles ride along in the URL (`?l=AB`), so a link or the Back button restores the exact view.
+
+Secondary views, from the top bar: **Leads** (sortable table, brief rows on request, all filters, CSV), **Buyers** (leads grouped by buyer), and **?** (How it works and The numbers). The watch list is linked from Leads.
+
+## What degrades without coordinates (never invented)
+- L1: no city bubbles; the side panel leads with a ranked city list instead. The map shows the state outline and "Map positions NOT FOUND".
+- L2: no pins, rings or legend; the city's leads are the list, and choosing one opens the same L3 card.
+- Click count is the same either way: state, city, property, Call.
+- Coordinates are read from `lat` / `lon` (also `lng`, `latitude` / `longitude`, top level or under `contact`). A state can be partly covered: leads without coordinates stay in the list only.
+
+## Word budget
+- Home: a title, three numbers, three toggles, the map, a one-line legend.
+- Deeper layers: labels, numbers and chips. The only running text is the one-line "why" on the property card.
+- Explanations live in tooltips (hover, focus or tap) and behind "?".
 
 ## Type
-- Display: system serif stack (Iowan Old Style / Palatino / Georgia). The landing headline has an italic second line.
-- Text and UI: system sans stack. No web fonts, so no font host and nothing to download.
-- Scale (px): up to 64 hero · 34 page title · 22 section · 19 lead name · 16 body · 15 UI · 13 smallest (uppercase labels only). Numbers are tabular.
+- Display: system serif stack (Iowan Old Style / Palatino / Georgia) for titles and the three numbers.
+- Text and UI: system sans stack. No web fonts, so no font host.
+- Scale (px): 56 / 44 numbers, 30 place title, 22 card title, 15-16 body, 12.5-13 uppercase labels. Numbers are tabular.
 
 ## Palette (tokens: the `:root` block at the top of `src/web/static/app.css`, the only place colours are defined)
-- Primary ink `#0B2545`, secondary `#13315C`, **one accent** `#1D70B8` (links, focus, selection, the final funnel step).
-- Neutrals: paper `#FAF9F6`, surface `#FFFFFF`, hairline `#E4E1DA`, muted text `#4F5B6E` (about 6.6:1 on paper).
-- Status: amber `#8A4B00` on `#FFF3D6` = NOT FOUND only. Named buyer = solid ink chip; Candidate = dashed outline chip that says "not final"; Unverified = dotted grey.
-- All text pairs meet WCAG AA.
+- Primary ink `#0B2545`, secondary `#13315C`, one accent `#1D70B8`.
+- Neutrals: paper `#FAF9F6`, surface `#FFFFFF`, hairline `#E4E1DA`, muted text `#4F5B6E`.
+- Map: states shade from pale blue to ink by lead count. Pins use four steps of the same blue family for stage (early to in a sale).
+- Amber `#8A4B00` on `#FFF3D6` = NOT FOUND only.
 
 ## Layout
-- One column, max 1120px, 24px gutters (16px on phones). Sections are separated by space and a hairline, not by cards.
-- Lead rows are a four-track grid on desktop and stack on phones. The drawer is a 600px right sheet (full screen at 375px).
-- Top bar: wordmark, six text links in workflow order, as-of date. On phones the links scroll sideways.
+- Desktop: `rail 248px | map | list 372px` filling the window; the list column appears from L1. Nothing on the main path scrolls except the list.
+- Phone (375px): title and numbers, toggles, map on top, then the card, then the list.
 
 ## Motion (explains, never decorates)
-- Numbers count up once when their page opens; the narrowing bars draw in sequence to show the filtering.
-- The drawer slides in over 160ms. `prefers-reduced-motion` turns all of it off.
+- 750ms zoom between layers so you see where you went. Marks fade in after the zoom lands.
+- A slow ping on pins that are late-stage or have a named buyer: "look here first".
+- `prefers-reduced-motion` turns zoom animation, pings and count-ups off.
 
 ## Deliberately left out
-- KPI tile grids, gradients, decorative shadows, emoji, a second accent colour, list colour-coding (A/B/C are words now).
-- Decision buttons, saved state, notes, pipeline board, e-mail drafts, onboarding tours. Nothing is stored in the browser.
-- Web fonts and a separate tokens *file*: the server serves a fixed allow-list of static files, and adding one means a server change, which this pass avoids. Tokens are one `:root` block; fonts are a system stack. This also removes the Google Fonts request the page used to make.
-- Per-signal source links, buyer contact details and map pins: the snapshot has none of these yet (see `docs/ui_field_requests.md`).
+- A text landing page, KPI tile grids, gradients, emoji, a second accent colour.
+- Map tiles, street detail, any dollar value for a property (size is units or beds only).
+- Decision buttons, saved state, notes, pipeline board, e-mail drafts, onboarding. Nothing is stored in the browser.
+- Web fonts and a separate tokens file: both would need a change to the server's static-file list, which this pass avoids.

@@ -88,7 +88,7 @@
     ["buyer_chain_quality", "Buyer's quality record"], ["closed_sale_penalty", "Sale closed over a year ago"]];
   const PAGE_SIZE = 25;
 
-  const S = { data: null, tab: "all", state: "", page: 1, sort: { key: "rank", dir: 1 }, mode: "brief", sel: -1, ctx: [], ctxIdx: -1 };
+  const S = { data: null, tab: "all", state: "", page: 1, sort: { key: "rank", dir: 1 }, mode: "table", sel: -1, ctx: [], ctxIdx: -1 };
   const $ = (id) => document.getElementById(id);
 
   function el(tag, props, ...kids) {
@@ -215,7 +215,6 @@
     S.buyers = groupBuyers();
     $("asof").textContent = "As of " + fmtDate(S.data.generated_at);
     $("loading").classList.add("hidden");
-    buildToday();
     buildFilters();
     buildTabs();
     render();
@@ -224,33 +223,37 @@
     buildFunnel();
     buildHow();
     buildExplore();
-    await buildMap().catch(() => { $("map-hint").textContent = "The map could not be drawn. Choose a state from the menu instead."; });
-    renderMapSide();
+    buildSearch();
+    await buildMap().catch(() => { $("stage").replaceChildren(el("p", { class: "state-title", text: "The map could not be drawn. Use search, or open Leads." })); });
     window.addEventListener("hashchange", route);
-    window.addEventListener("scroll", () => $("topbar").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
     route();
   }
 
   /* ---------- pages ---------- */
-  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/leads": "leads", "#/buyers": "buyers", "#/map": "map",
-    "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore" };
-  const VIEW_IDS = ["dashboard", "leads", "buyers", "map", "overview", "how", "explore"];
+  const VIEWS = { "#/leads": "leads", "#/buyers": "buyers", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore" };
+  const VIEW_IDS = ["dashboard", "leads", "buyers", "overview", "how", "explore"];
   function route() {
-    const listRoute = /^#\/leads\/([ABC])$/.exec(location.hash);
-    const v = listRoute ? "leads" : VIEWS[location.hash] || "dashboard";
-    stopMotion();
+    const h = location.hash;
+    const listRoute = /^#\/leads\/([ABC])$/.exec(h), buyerQ = /^#\/buyers\?q=(.*)$/.exec(h);
+    const v = listRoute ? "leads" : buyerQ ? "buyers" : VIEWS[h] || "dashboard";
+    const changed = S.view !== v;
+    if (changed) stopMotion();
     S.view = v;
+    document.body.dataset.view = v;
     for (const id of VIEW_IDS) $("view-" + id).classList.toggle("hidden", id !== v);
-    document.querySelectorAll(".nav a").forEach((a) => {
-      const on = a.dataset.view === v;
+    const about = v === "how" || v === "overview";
+    $("subnav").classList.toggle("hidden", !about);
+    document.querySelectorAll(".nav a, .subnav a").forEach((a) => {
+      const on = a.dataset.view === v || (a.dataset.view === "help" && about);
       a.classList.toggle("active", on);
-      if (on) { a.setAttribute("aria-current", "page"); a.scrollIntoView({ block: "nearest", inline: "nearest" }); }
-      else a.removeAttribute("aria-current");
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    closePanel();
+    hideTip();
+    if (v !== "dashboard") hidePanel();
     if (listRoute) selectTab(listRoute[1]);
-    window.scrollTo({ top: 0, behavior: "instant" });
-    animateView(v);
+    if (buyerQ) { try { $("b-search").value = decodeURIComponent(buyerQ[1]); } catch (e) { $("b-search").value = ""; } renderBuyers(); }
+    if (v === "dashboard") { parseMapHash(h); renderMap(); }
+    if (changed) { window.scrollTo({ top: 0, behavior: "instant" }); animateView(v); }
   }
 
   /* ---------- motion: numbers count up once when their page opens; nothing else moves ---------- */
@@ -279,27 +282,14 @@
     view.querySelectorAll("[data-n]").forEach((node, i) => countUp(node, 80 + i * 90));
   }
 
-  /* ---------- 1. This week: how many, as of when, where to start ---------- */
-  function topPicks(n) {
-    const seen = new Set(), out = [];
-    const key = (r) => (r.buyer || "") + "|" + (((r.breakdown || {}).bankruptcy_family || [])[0] || r.property);
-    for (const pass of [(r) => r.lists.includes("A") && r.buyer_group === "confirmed", () => true]) {
-      for (const r of S.byRank) {
-        if (out.length >= n) break;
-        if (out.includes(r) || !pass(r) || seen.has(key(r)) || (r.buyer && seen.has("b:" + r.buyer))) continue;
-        seen.add(key(r)); if (r.buyer) seen.add("b:" + r.buyer);
-        out.push(r);
-      }
-    }
-    return out;
-  }
+  /* ---------- the narrowing (How it works): many buildings become a short list ---------- */
   function narrowSteps() {
     const F = S.data.funnel || [], find = (name) => F.find((f) => f.step === name);
     const n = S.data.items.length;
     return [[find("Buildings tracked"), "buildings tracked", "Every senior-housing and nursing building in the public sources."],
       [find("With a distress signal"), "show a distress signal", "At least one dated signal in the last 36 months. Most stay on the watch list."],
       [{ count: n }, "leads", "Three or more kinds of signal, or one hard event such as a bankruptcy or receivership."],
-      [{ count: Math.min(3, n) }, "to start with", "The highest-ranked live deals, one per buyer."]]
+      [{ count: Math.min(20, n) }, "at the top", "The highest-ranked leads: live sales with a buyer in the picture."]]
       .filter(([f]) => f && f.count != null);
   }
   function buildNarrow(target) {
@@ -308,28 +298,6 @@
     $(target).replaceChildren(...steps.map(([f, label, rule], i) => el("li", { style: "--i:" + i + ";--w:" + w(f.count).toFixed(3) },
       el("span", { class: "n", "data-n": f.count, text: fmtInt(f.count) }), el("span", { class: "l", text: label }),
       el("span", { class: "bar", "aria-hidden": "true" }), el("span", { class: "r", text: rule }))));
-  }
-  function buildToday() {
-    const items = S.data.items, n = items.length;
-    const cnt = (k) => items.filter((r) => r.lists.includes(k)).length;
-    $("hero-eyebrow").textContent = "Weekly briefing · data as of " + fmtDate(S.data.generated_at, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-    $("hero-count").textContent = fmtInt(n); $("hero-count").dataset.n = n;
-    $("hero-sub").replaceChildren("Senior-housing and nursing properties with public signs of distress, ranked. " +
-      "Every claim links to its source. What no source states reads ", nf(), ".");
-    for (const [id, v] of [["next-a", cnt("A")], ["next-b", cnt("B")], ["next-buyers", S.buyers.length],
-      ["next-states", new Set(items.map((r) => r.state).filter(Boolean)).size]]) { $(id).textContent = fmtInt(v); }
-    const picks = topPicks(3);
-    $("picks").replaceChildren(...picks.map((r, i) => el("article", { class: "pick", tabindex: 0, role: "button", style: "--i:" + i,
-      "aria-label": "Open lead: " + r.property, onclick: (e) => openPanel(r, e.currentTarget, picks),
-      onkeydown: (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); openPanel(r, e.currentTarget, picks); } } },
-      el("p", { class: "pick-rank" }, "Rank " + r.rank, el("span", { class: "sep", text: " · " }), "score " + Math.round(r.score ?? 0)),
-      el("h3", { text: r.property || "" }), metaLine(r),
-      el("p", { class: "why", text: whyShort(r) }),
-      el("div", { class: "pick-facts" }, stageMark(r), buyerLine(r),
-        el("span", { class: "buyerline" }, el("span", { class: "k", text: "Phone" }), " ", telLink(r))),
-      el("span", { class: "open", text: "Open lead" }))));
-    if (!picks.length) $("picks").replaceChildren(el("p", { class: "muted", text: "No leads in this week's data yet. Check back after the next update." }));
-    buildNarrow("narrow");
   }
 
   /* ---------- 4. The numbers ---------- */
@@ -450,7 +418,6 @@
     const present = [...new Set(S.data.items.map((r) => r.state).filter(Boolean))].sort((a, b) => (STATES[a] || a).localeCompare(STATES[b] || b));
     const stateOpts = () => [option("", "All states"), ...present.map((c) => option(c, STATES[c] || c))];
     $("f-state").replaceChildren(...stateOpts());
-    $("m-state").replaceChildren(...stateOpts());
     $("f-care").replaceChildren(option("", "All care types"), option("senior", "Senior housing (AL / IL / MC / CCRC)"),
       option("SNF", "Skilled nursing (SNF)"), ...SENIOR_TYPES.map((c) => option(c, c + " only")));
     $("f-stage").replaceChildren(option("", "All stages"), ...STAGES.map((s) => option(s, STAGE_LABEL[s])));
@@ -458,7 +425,6 @@
       option("inferred", "Unverified"), option("none", "No buyer found"));
     for (const id of FILTER_IDS) $(id).addEventListener("input", () => { S.page = 1; S.sel = -1; render(); });
     $("f-state").addEventListener("input", (e) => setState(e.target.value));
-    $("m-state").addEventListener("input", (e) => setState(e.target.value));
     const reset = () => { for (const id of FILTER_IDS) $(id).value = ""; setState(""); };
     $("f-reset").addEventListener("click", reset);
     $("empty-reset").addEventListener("click", reset);
@@ -473,10 +439,8 @@
   }
   function setState(code) {
     S.state = code; S.page = 1; S.sel = -1;
-    $("f-state").value = code; $("m-state").value = code;
-    d3.selectAll("#map path.state").classed("selected", (f) => CODE_BY_NAME[f.properties.name] === code);
+    $("f-state").value = code;
     render();
-    renderMapSide();
   }
   const careMatch = (r, care) => !care || (care === "senior" ? r.care_types.some((t) => SENIOR_TYPES.includes(t)) : r.care_types.includes(care));
   function filtered() {
@@ -671,47 +635,286 @@
     $("b-empty").classList.toggle("hidden", rows.length > 0);
   }
 
-  /* ---------- 1b. Map: where the leads are ---------- */
+  /* ---------- the map is the product: L0 USA > L1 state > L2 city > L3 property card > L4 research ----------
+     The URL hash holds the whole state (#/map/PA/pittsburgh/r4/research?l=AB), so Back and Esc go up one level. */
+  const M = { layers: new Set(), st: "", city: "", lead: null, research: false, k: 1, ready: false, rows: [] };
+  const NOSTATE = "--", NOCITY = "-";
+  const LAYERS = [["A", "Live deals"], ["B", "Pre-sale"], ["C", "Repeat buyers"]];
+  const leadKey = (r) => "r" + r.rank;
+  const cityKey = (r) => (r.city ? r.city.trim().toLowerCase() : NOCITY);
+  const cityName = (c) => String(c || "").toLowerCase().replace(/(^|[\s\-'.(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  const isRepeat = (r) => !!r.buyer && S.repeat.has(r.buyer.trim().toLowerCase());
+  const inLayers = (r) => !M.layers.size || [...M.layers].some((l) => (l === "C" ? isRepeat(r) : r.lists.includes(l)));
+  function mapHash(o) {
+    o = Object.assign({ st: M.st, city: M.city, lead: M.lead, research: false, layers: M.layers }, o);
+    let h = "#/map";
+    if (o.st) { h += "/" + o.st;
+      if (o.city) { h += "/" + encodeURIComponent(o.city);
+        if (o.lead) h += "/" + leadKey(o.lead) + (o.research ? "/research" : ""); } }
+    const l = [...o.layers].sort().join("");
+    return h + (l ? "?l=" + l : "");
+  }
+  const leadHash = (r, o) => mapHash(Object.assign({ st: r.state || NOSTATE, city: cityKey(r), lead: r }, o));
+  function parseMapHash(h) {
+    const [path, query] = h.replace(/^#\/?(map)?\/?/, "").split("?");
+    let seg = [];
+    try { seg = path ? path.split("/").map(decodeURIComponent) : []; } catch (e) { seg = []; }
+    M.layers = new Set((((/(?:^|&)l=([ABC]+)/.exec(query || "")) || [])[1] || "").split("").filter(Boolean));
+    M.st = seg[0] && (STATES[seg[0]] || seg[0] === NOSTATE) ? seg[0] : "";
+    M.city = M.st ? seg[1] || "" : "";
+    M.lead = M.city && seg[2] ? S.byRank.find((r) => leadKey(r) === seg[2]) || null : null;
+    M.research = !!M.lead && seg[3] === "research";
+  }
+  const go = (h) => { if (location.hash === h) route(); else location.hash = h; };
+  /* Coordinates: used only when the snapshot carries them. Never estimated. */
+  let projection = null;
+  function coord(r) {
+    if (r._xy !== undefined) return r._xy;
+    const c = r.contact || {};
+    const lat = Number(r.lat ?? r.latitude ?? c.lat ?? c.latitude), lon = Number(r.lon ?? r.lng ?? r.longitude ?? c.lon ?? c.lng ?? c.longitude);
+    const has = [r.lat, r.latitude, c.lat, c.latitude].some((v) => v != null && v !== "") && isFinite(lat) && isFinite(lon) && (lat || lon);
+    r._xy = has && projection ? projection([lon, lat]) || null : null;
+    return r._xy;
+  }
+  const stageColor = (r) => token("--stage-" + (STAGES.includes(r.stage) ? r.stage : "early"));
+  const pings = (r) => r.stage === "late" || r.stage === "sale" || r.buyer_group === "confirmed";
+
   async function buildMap() {
     const topo = await d3.json("/static/states-albers-10m.json");
+    projection = d3.geoAlbersUsa().scale(1300).translate([487.5, 305]);      // the projection the bundled state shapes use
     const states = topojson.feature(topo, topo.objects.states).features;
-    const counts = d3.rollup(S.data.items, (v) => v.length, (r) => r.state);
+    M.path = d3.geoPath();
+    M.feat = Object.fromEntries(states.map((f) => [CODE_BY_NAME[f.properties.name], f]));
+    const svg = d3.select("#map");
+    M.zoom = svg.append("g").attr("class", "zoom").attr("transform", "translate(0,0) scale(1)");
+    const codeOf = (f) => CODE_BY_NAME[f.properties.name];
+    M.states = M.zoom.append("g").selectAll("path").data(states).join("path").attr("class", "state").attr("d", M.path).attr("role", "button")
+      .on("mousemove", (ev, f) => showTip(f.properties.name + " · " + plural((M.counts && M.counts.get(codeOf(f))) || 0, "lead"), ev.clientX, ev.clientY + 8))
+      .on("mouseleave", hideTip)
+      .on("click", (ev, f) => { ev.stopPropagation(); hideTip(); if (M.counts.get(codeOf(f))) go(mapHash({ st: codeOf(f), city: "", lead: null })); })
+      .on("keydown", (ev, f) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); if (M.counts.get(codeOf(f))) go(mapHash({ st: codeOf(f), city: "", lead: null })); } });
+    M.zoom.append("path").datum(topojson.mesh(topo, topo.objects.states, (a, b) => a !== b)).attr("class", "mesh").attr("d", M.path);
+    M.marks = M.zoom.append("g").attr("class", "marks");
+    svg.on("click", () => { if (M.lead) go(mapHash({ lead: null })); });
+    window.addEventListener("resize", () => { if (S.view === "dashboard") renderMap(); });
+    M.ready = true;
+  }
+
+  function renderMap() {
+    if (!S.data) return;
+    const all = S.byRank.filter(inLayers);
+    const stRows = M.st ? all.filter((r) => (M.st === NOSTATE ? !r.state : r.state === M.st)) : all;
+    const rows = M.city ? stRows.filter((r) => cityKey(r) === M.city) : stRows;
+    M.rows = rows;
+    const level = M.lead ? 3 : M.city ? 2 : M.st ? 1 : 0;
+    $("view-dashboard").dataset.level = level;
+    const stName = M.st === NOSTATE ? "State not found" : STATES[M.st] || "";
+    const ctName = M.city === NOCITY ? "City not found" : cityName(M.city);
+
+    // breadcrumb + title
+    const crumb = (label, hash, here) => (here ? el("span", { class: "here", "aria-current": "page", text: label }) : el("a", { href: hash, text: label }));
+    const parts = [crumb("USA", mapHash({ st: "", city: "", lead: null }), level === 0)];
+    if (level >= 1) parts.push(crumb(stName, mapHash({ city: "", lead: null }), level === 1));
+    if (level >= 2) parts.push(crumb(ctName, mapHash({ lead: null }), level === 2));
+    if (level >= 3) parts.push(crumb(M.lead.property || "Property", "", true));
+    $("crumbs").replaceChildren(...parts.flatMap((p, i) => (i ? [el("span", { class: "sep", "aria-hidden": "true", text: "›" }), p] : [p])));
+    $("m-title").textContent = level === 0 ? "United States" : level === 1 ? stName : ctName + (M.st !== NOSTATE ? ", " + M.st : "");
+
+    // three numbers, never more
+    const named = rows.filter((r) => r.buyer_group === "confirmed").length;
+    const mid = level === 0 ? [new Set(rows.map((r) => r.state).filter(Boolean)).size, "states"]
+      : level === 1 ? [new Set(rows.map(cityKey)).size, "cities"] : [rows.filter((r) => phoneText((r.contact || {}).phone)).length, "with phone"];
+    $("hud").replaceChildren(...[[rows.length, rows.length === 1 ? "lead" : "leads"], mid, [named, "buyer named"]].map(([n, label]) =>
+      el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))));
+
+    // layer toggles
+    const base = M.st ? S.byRank.filter((r) => (M.st === NOSTATE ? !r.state : r.state === M.st) && (!M.city || cityKey(r) === M.city)) : S.byRank;
+    $("layers").replaceChildren(...LAYERS.map(([key, label]) => {
+      const on = M.layers.has(key), n = base.filter((r) => (key === "C" ? isRepeat(r) : r.lists.includes(key))).length;
+      return el("button", { class: "layer", type: "button", "aria-pressed": String(on), "aria-label": "List " + key + ", " + label + ": " + n + " leads",
+        onclick: () => { const next = new Set(M.layers); if (on) next.delete(key); else next.add(key); go(mapHash({ layers: next, lead: null })); } },
+        el("b", { text: key }), el("span", { text: label }), el("i", { text: fmtInt(n) }));
+    }));
+
+    if (M.ready) drawMap(all, stRows, rows, level);
+    renderSide(stRows, rows, level);
+    renderCard();
+    if (M.research) openPanel(M.lead, null, rows); else hidePanel();
+  }
+
+  function drawMap(all, stRows, rows, level) {
+    const codeOf = (f) => CODE_BY_NAME[f.properties.name];
+    const counts = d3.rollup(all, (v) => v.length, (r) => r.state);
+    M.counts = counts;
     const max = d3.max([...counts.values()]) || 1;
     const color = d3.scaleSequentialSqrt([0, max], d3.interpolateRgb(token("--map-low"), token("--map-high")));
-    const path = d3.geoPath();
-    const svg = d3.select("#map");
-    const codeOf = (f) => CODE_BY_NAME[f.properties.name], n = (f) => counts.get(codeOf(f)) || 0;
-    const label = (f) => f.properties.name + ": " + plural(n(f), "lead");
-    svg.append("g").selectAll("path").data(states).join("path")
-      .attr("class", (f) => "state" + (n(f) ? "" : " none")).attr("d", path)
-      .attr("fill", (f) => (n(f) ? color(n(f)) : token("--map-empty")))
-      .attr("tabindex", (f) => (n(f) ? 0 : null)).attr("role", "button").attr("aria-label", label)
-      .on("mousemove", (ev, f) => showTip(label(f), ev.clientX, ev.clientY + 8))
-      .on("mouseleave", hideTip)
-      .on("click", (ev, f) => { ev.stopPropagation(); if (n(f)) setState(S.state === codeOf(f) ? "" : codeOf(f)); })
-      .on("keydown", (ev, f) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setState(S.state === codeOf(f) ? "" : codeOf(f)); } });
-    svg.append("path").datum(topojson.mesh(topo, topo.objects.states, (a, b) => a !== b)).attr("class", "mesh").attr("d", path);
-    $("legend").replaceChildren(el("span", { text: "1 lead" }),
-      el("span", { class: "ramp", "aria-hidden": "true" }, [0.05, 0.25, 0.5, 0.75, 1].map((t) => el("i", { style: "background:" + color(t * max) }))),
-      el("span", { text: fmtInt(max) + " leads" }), el("span", { class: "none-key" }, el("i", {}), "none"));
-  }
-  function renderMapSide() {
-    const items = S.byRank, st = S.state;
-    if (!st) {
-      const counts = [...d3.rollup(items, (v) => v.length, (r) => r.state)].filter(([k]) => k).sort((a, b) => b[1] - a[1]);
-      $("map-title").textContent = "Where the leads are";
-      $("map-sub").textContent = plural(items.length, "lead") + " across " + plural(counts.length, "state") + ". The busiest:";
-      $("map-list").replaceChildren(...counts.slice(0, 8).map(([code, c]) => el("button", { class: "leadlink state", type: "button", onclick: () => setState(code) },
-        el("span", { class: "nm", text: STATES[code] || code }), el("span", { class: "st", text: plural(c, "lead") }))));
-      $("map-open").textContent = "Open all leads";
-      return;
+    const n = (f) => counts.get(codeOf(f)) || 0;
+    M.states.attr("fill", (f) => (n(f) ? color(n(f)) : token("--map-empty")))
+      .classed("none", (f) => !n(f)).classed("selected", (f) => codeOf(f) === M.st).classed("dim", (f) => !!M.feat[M.st] && codeOf(f) !== M.st)
+      .attr("tabindex", (f) => (n(f) && level === 0 ? 0 : null)).attr("aria-label", (f) => f.properties.name + ": " + plural(n(f), "lead"));
+
+    // where to fly: the whole country, a state, or the pins of a city
+    const W = 975, H = 610, feat = M.feat[M.st];
+    const pins = level >= 2 ? rows.map((r) => [r, coord(r)]).filter((x) => x[1]) : [];
+    let b = null;
+    if (pins.length) {
+      const xs = pins.map((p) => p[1][0]), ys = pins.map((p) => p[1][1]), pad = 16;
+      b = [[Math.min(...xs) - pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.max(...ys) + pad]];
+    } else if (feat) b = M.path.bounds(feat);
+    let k = 1, tx = 0, ty = 0;
+    if (b) { k = Math.min(26, 0.88 / Math.max((b[1][0] - b[0][0]) / W, (b[1][1] - b[0][1]) / H));
+      tx = W / 2 - (k * (b[0][0] + b[1][0])) / 2; ty = H / 2 - (k * (b[0][1] + b[1][1])) / 2; }
+    M.k = k;
+    M.zoom.transition().duration(REDUCED ? 0 : 750).ease(d3.easeCubicInOut).attr("transform", "translate(" + tx + "," + ty + ") scale(" + k + ")");
+
+    // marks are sized in screen pixels, whatever the zoom
+    const box = $("map").getBoundingClientRect();
+    const u = (1 / Math.max(0.01, Math.min(box.width / W, box.height / H))) / k;
+    const key = (ev, fn) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); fn(); } };
+    M.marks.selectAll("*").remove();
+    M.hasPins = pins.length > 0;
+    M.hasBubbles = false;
+    if (level === 1) {
+      const byCity = d3.groups(stRows.filter(coord), cityKey).map(([c, v]) => ({ c, v, x: d3.mean(v, (r) => coord(r)[0]), y: d3.mean(v, (r) => coord(r)[1]) }))
+        .sort((a, b2) => b2.v.length - a.v.length);
+      M.hasBubbles = byCity.length > 0;
+      const g = M.marks.selectAll("g").data(byCity).join("g").attr("class", "bubble").attr("transform", (d) => "translate(" + d.x + "," + d.y + ")")
+        .attr("tabindex", 0).attr("role", "button").attr("aria-label", (d) => cityName(d.c) + ": " + plural(d.v.length, "lead"))
+        .on("click", (ev, d) => { ev.stopPropagation(); hideTip(); go(mapHash({ city: d.c, lead: null })); })
+        .on("keydown", (ev, d) => key(ev, () => go(mapHash({ city: d.c, lead: null }))))
+        .on("mousemove", (ev, d) => showTip(cityName(d.c) + " · " + plural(d.v.length, "lead"), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip);
+      const rad = (d) => Math.min(26, 7 + 4 * Math.sqrt(d.v.length)) * u;
+      g.append("circle").attr("r", rad);
+      g.filter((d) => d.v.length > 1).append("text").attr("dy", "0.35em").attr("font-size", 12 * u).text((d) => d.v.length);
+    } else if (pins.length) {
+      // other cities stay on screen as quiet dots, so you can hop sideways without going back up
+      const others = d3.groups(stRows.filter((r) => coord(r) && cityKey(r) !== M.city), cityKey)
+        .map(([c, v]) => ({ c, v, x: d3.mean(v, (r) => coord(r)[0]), y: d3.mean(v, (r) => coord(r)[1]) }));
+      M.marks.selectAll("g.ctx").data(others).join("g").attr("class", "ctx").attr("transform", (d) => "translate(" + d.x + "," + d.y + ")")
+        .on("click", (ev, d) => { ev.stopPropagation(); hideTip(); go(mapHash({ city: d.c, lead: null })); })
+        .on("mousemove", (ev, d) => showTip(cityName(d.c) + " · " + plural(d.v.length, "lead"), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip)
+        .append("circle").attr("r", 5 * u);
+      // range rings give the scale: 1 degree of latitude is about 69 miles, 22.7 map units in this projection
+      const cx = d3.mean(pins, (p) => p[1][0]), cy = d3.mean(pins, (p) => p[1][1]), mile = (1300 * Math.PI / 180) / 69.17;
+      const rings = M.marks.selectAll("g.ring").data([5, 15, 30]).join("g").attr("class", "ring").attr("transform", "translate(" + cx + "," + cy + ")");
+      rings.append("circle").attr("r", (d) => d * mile);
+      rings.append("text").attr("y", (d) => -d * mile - 4 * u).attr("font-size", 11 * u).text((d) => d + " mi");
+      const rad = (r) => (size(r) ? Math.max(5, Math.min(18, 2.2 + Math.sqrt(size(r)) * 0.95)) : 5) * u;
+      const sorted = pins.slice().sort((a, b2) => (size(b2[0]) || 0) - (size(a[0]) || 0));          // small pins stay on top
+      const g = M.marks.selectAll("g.pin").data(sorted).join("g").attr("class", (d) => "pin" + (d[0] === M.lead ? " sel" : "") + (size(d[0]) ? "" : " nosize"))
+        .attr("transform", (d) => "translate(" + d[1][0] + "," + d[1][1] + ")").attr("tabindex", 0).attr("role", "button")
+        .attr("aria-label", (d) => d[0].property + ", " + (sizeText(d[0]) || "size not found") + ", " + (STAGE_LABEL[d[0].stage] || ""))
+        .on("click", (ev, d) => { ev.stopPropagation(); hideTip(); go(leadHash(d[0])); })
+        .on("keydown", (ev, d) => key(ev, () => go(leadHash(d[0]))))
+        .on("mousemove", (ev, d) => showTip(d[0].property + " · " + (sizeText(d[0]) || "size not found"), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip);
+      g.filter((d) => pings(d[0])).append("circle").attr("class", "ping").attr("r", (d) => rad(d[0])).attr("stroke", (d) => stageColor(d[0])).attr("stroke-width", 1.5 * u);
+      g.append("circle").attr("class", "dot").attr("r", (d) => rad(d[0])).attr("fill", (d) => stageColor(d[0])).attr("stroke-width", (d) => (d[0] === M.lead ? 3 : 1.25) * u);
     }
-    const rows = items.filter((r) => r.state === st);
-    const named = rows.filter((r) => r.buyer_group === "confirmed").length;
-    $("map-title").textContent = STATES[st] || st;
-    $("map-sub").textContent = plural(rows.length, "lead") + ", " + named + " with a named buyer. Highest ranked first:";
-    $("map-list").replaceChildren(...rows.slice(0, 8).map((r) => leadLink(r, rows)));
-    $("map-open").textContent = rows.length > 8 ? "See all " + rows.length + " in Leads" : "Open in Leads";
+
+    const bare = level >= 1 && !M.hasBubbles && !M.hasPins && !!feat;
+    let note = $("stage").querySelector(".stage-note");
+    if (!note) { note = el("p", { class: "stage-note" }); $("stage").append(note); }
+    note.classList.toggle("hidden", !bare);
+    note.replaceChildren("Map positions ", nf());
+
+    // legend: one row of marks, no sentences
+    const ramp = el("span", { class: "ramp", "aria-hidden": "true" }, [0.05, 0.25, 0.5, 0.75, 1].map((t) => el("i", { style: "background:" + color(t * max) })));
+    $("legend").replaceChildren(...(M.hasPins
+      ? [el("span", { class: "lg" }, STAGES.map((s) => el("span", { class: "lg-item" }, el("i", { class: "dotkey", style: "background:" + token("--stage-" + s) }), STAGE_LABEL[s]))),
+         el("span", { class: "lg" }, el("i", { class: "dotkey s" }), el("i", { class: "dotkey l" }), "size = units / beds")]
+      : [el("span", { class: "lg" }, "1", ramp, fmtInt(max) + " leads")]));
+  }
+
+  function leadRow(r) {
+    return el("a", { class: "lrow" + (r === M.lead ? " sel" : ""), href: leadHash(r), "aria-current": r === M.lead ? "true" : null },
+      el("span", { class: "nm", text: r.property || "" }),
+      el("span", { class: "pl" }, cityName(r.city) || nf(), " · ", sizeText(r) || ["size ", nf()]),
+      el("span", { class: "chips" }, stageMark(r), buyerChip(r.buyer_group),
+        phoneText((r.contact || {}).phone) ? el("span", { class: "ph tnum", text: phoneText(r.contact.phone) }) : null));
+  }
+  function renderSide(stRows, rows, level) {
+    const side = $("side");
+    side.classList.toggle("hidden", level === 0);
+    if (level === 0) return side.replaceChildren();
+    const kids = [];
+    if (level === 1 && !M.hasBubbles) {
+      const cities = d3.groups(stRows, cityKey).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+      const cityRow = ([c, v]) => el("a", { class: "crow-city", href: mapHash({ city: c, lead: null }) },
+        el("span", { class: "nm", text: c === NOCITY ? "City not found" : cityName(c) }), el("span", { class: "bar", style: "--w:" + (v.length / cities[0][1].length).toFixed(3) }), el("b", { text: fmtInt(v.length) }));
+      kids.push(el("h2", {}, "Cities", el("span", { class: "n", text: fmtInt(cities.length) })),
+        el("div", { class: "citylist" }, cities.slice(0, 6).map(cityRow)),
+        cities.length > 6 ? el("details", { class: "more" }, el("summary", { text: "All " + cities.length + " cities" }), el("div", { class: "citylist" }, cities.slice(6).map(cityRow))) : null);
+    }
+    kids.push(el("h2", {}, "Leads", el("span", { class: "n", text: fmtInt(rows.length) })));
+    const CAP = 20, selIdx = rows.indexOf(M.lead);
+    kids.push(el("div", { class: "lrows" }, rows.slice(0, CAP).map(leadRow)),
+      rows.length > CAP ? el("details", { class: "more", open: selIdx >= CAP }, el("summary", { text: "All " + fmtInt(rows.length) + " leads" }),
+        el("div", { class: "lrows" }, rows.slice(CAP).map(leadRow))) : null);
+    if (!rows.length) kids.push(el("p", { class: "muted", text: "No leads here with these lists on." }));
+    const top = side.scrollTop;
+    side.replaceChildren(...kids.filter(Boolean));
+    side.scrollTop = M.sideKey === M.st + "/" + M.city ? top : 0;
+    M.sideKey = M.st + "/" + M.city;
+    const sel = side.querySelector(".lrow.sel");
+    if (sel && sel.scrollIntoView && window.innerWidth > 960) sel.scrollIntoView({ block: "nearest" });
+  }
+
+  /* L3: the card. Two decisions only: call, or research. */
+  function renderCard() {
+    const card = $("card"), r = M.lead;
+    card.classList.toggle("hidden", !r);
+    if (!r) return card.replaceChildren();
+    const tel = phoneText((r.contact || {}).phone) ? r.contact.phone : null, bd = r.breakdown || {};
+    card.replaceChildren(...[
+      el("button", { class: "btn quiet icon x", type: "button", "aria-label": "Close card", onclick: (e) => { e.stopPropagation(); go(mapHash({ lead: null })); } }, "✕"),
+      el("p", { class: "eyebrow", text: "Rank " + r.rank + " · score " + (r.score == null ? "–" : Math.round(r.score)) }),
+      el("h2", { text: r.property || "" }),
+      el("p", { class: "meta" }, [cityName(r.city), r.state].filter(Boolean).join(", ") || nf(), " · ", sizeText(r) || ["size ", nf()], " · ", careText(r) || ["care ", nf()]),
+      el("p", { class: "why", text: whyShort(r) }),
+      el("div", { class: "chips" }, stageMark(r), buyerChip(r.buyer_group), bd.size_fit > 0 ? el("span", { class: "chip plain", text: "fits $3–30M", "data-tip": "Size fit: " + sizeText(r) + " is inside the range the rules treat as a $3–30M loan. No dollar value is estimated." }) : null),
+      r.buyer ? el("p", { class: "bname", text: r.buyer }) : null,
+      el("div", { class: "card-actions" },
+        tel ? el("a", { class: "btn primary big", href: "tel:+1" + tel }, "Call ", el("span", { class: "tnum", text: phoneText(tel) }))
+          : el("span", { class: "btn big nfbtn", role: "note" }, "Phone ", nf()),
+        el("a", { class: "btn big", href: leadHash(r, { research: true }), text: "Research" }))].filter(Boolean));
+    card.onclick = (e) => e.stopPropagation();
+  }
+
+  /* ---------- search: property / buyer / city / state, jumps straight to that layer ---------- */
+  const Q = { items: [], active: -1 };
+  function buildSearch() {
+    const idx = [], none = new Set();
+    const byState = d3.rollup(S.byRank, (v) => v.length, (r) => r.state);
+    for (const [st, n] of byState) if (st) idx.push({ t: "State", label: STATES[st] || st, sub: plural(n, "lead"), hash: mapHash({ st, city: "", lead: null, layers: none }) });
+    for (const [st, cities] of d3.rollup(S.byRank, (v) => v.length, (r) => r.state, cityKey)) for (const [c, n] of cities)
+      if (st && c !== NOCITY) idx.push({ t: "City", label: cityName(c) + ", " + st, sub: plural(n, "lead"), hash: mapHash({ st, city: c, lead: null, layers: none }) });
+    for (const r of S.byRank) idx.push({ t: "Property", label: r.property || "", sub: [cityName(r.city), r.state].filter(Boolean).join(", "), hash: leadHash(r, { layers: none }) });
+    for (const g of S.buyers) idx.push({ t: "Buyer", label: g.name, sub: plural(g.leads.length, "lead"), hash: "#/buyers?q=" + encodeURIComponent(g.name) });
+    for (const x of idx) x.key = x.label.toLowerCase();
+    const input = $("q"), list = $("q-results");
+    const close = () => { list.classList.add("hidden"); input.setAttribute("aria-expanded", "false"); Q.items = []; Q.active = -1; };
+    const pick = (x) => { input.value = ""; close(); input.blur(); go(x.hash); };
+    const paint = () => {
+      list.replaceChildren(...(Q.items.length ? Q.items.map((x, i) => el("li", { role: "option", "aria-selected": String(i === Q.active), class: i === Q.active ? "on" : null,
+        onmousedown: (e) => { e.preventDefault(); pick(x); } }, el("span", { class: "t", text: x.t }), el("span", { class: "l", text: x.label }), el("span", { class: "s", text: x.sub })))
+        : [el("li", { class: "none", text: "No match" })]));
+      list.classList.remove("hidden"); input.setAttribute("aria-expanded", "true");
+    };
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      if (q.length < 2) return close();
+      const order = { State: 0, City: 1, Property: 2, Buyer: 3 };
+      Q.items = idx.filter((x) => x.key.includes(q)).sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || order[a.t] - order[b.t] || a.key.length - b.key.length).slice(0, 8);
+      Q.active = Q.items.length ? 0 : -1;
+      paint();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { if (!Q.items.length) return; e.preventDefault();
+        Q.active = (Q.active + (e.key === "ArrowDown" ? 1 : Q.items.length - 1)) % Q.items.length; paint(); }
+      else if (e.key === "Enter" && Q.items[Q.active]) { e.preventDefault(); pick(Q.items[Q.active]); }
+      else if (e.key === "Escape") { e.stopPropagation(); input.value = ""; close(); input.blur(); }
+    });
+    input.addEventListener("blur", () => setTimeout(close, 120));
   }
 
   /* ---------- lead detail: why -> signals + sources -> buyer -> contact -> score ---------- */
@@ -791,12 +994,13 @@
     $("panel").classList.remove("hidden"); $("scrim").classList.remove("hidden");
     $("panel").setAttribute("aria-hidden", "false");
     document.body.classList.add("panel-open");
-    document.querySelectorAll(".view, .topbar, .skip-link, .site-foot").forEach((n) => { n.inert = true; });
+    document.querySelectorAll(".view, .topbar, .subnav, .skip-link").forEach((n) => { n.inert = true; });
     if (wasHidden) $("p-close").focus();
   }
   function stepPanel(d) {
     const i = S.ctxIdx + d;
     if (S.ctxIdx < 0 || i < 0 || i >= S.ctx.length) return;
+    if (S.view === "dashboard") return go(leadHash(S.ctx[i], { research: true }));
     if (S.ctx === S.rows) { S.sel = i; S.page = Math.floor(i / PAGE_SIZE) + 1; render(); S.panelTrigger = document.querySelector('#lists [data-i="' + i + '"]'); }
     openPanel(S.ctx[i], null);
   }
@@ -838,11 +1042,15 @@
           : "No public phone or website is on file yet. The source links above are the best starting point.",
         full ? null : [" ", ext(mapsUrl(r), "Search for it on a map"), "."]));
   }
-  function closePanel() {
+  function closePanel() {            // the user closes research: on the map that means "up one level"
+    if (S.view === "dashboard" && M.research) return go(mapHash({ research: false }));
+    hidePanel();
+  }
+  function hidePanel() {
     const wasOpen = !$("panel").classList.contains("hidden");
     $("panel").classList.add("hidden"); $("scrim").classList.add("hidden"); $("panel").setAttribute("aria-hidden", "true");
     document.body.classList.remove("panel-open");
-    document.querySelectorAll(".view, .topbar, .skip-link, .site-foot").forEach((n) => { n.inert = false; });
+    document.querySelectorAll(".view, .topbar, .subnav, .skip-link").forEach((n) => { n.inert = false; });
     S.open = null;
     if (wasOpen && S.panelTrigger && S.panelTrigger.isConnected) S.panelTrigger.focus({ preventScroll: true });
   }
@@ -854,12 +1062,15 @@
   $("retry").addEventListener("click", () => location.reload());
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a[href^='#/']");
-    if (a && a.hash === location.hash) { e.preventDefault(); route(); }
+    if (a && a.hash === location.hash && S.data) { e.preventDefault(); route(); }
   });
   document.addEventListener("keydown", (e) => {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ""));
     const open = !$("panel").classList.contains("hidden");
-    if (e.key === "Escape") { hideTip(); if (open) closePanel(); else if (typing) e.target.blur(); return; }
+    if (e.key === "Escape") { hideTip();
+      if (open) closePanel(); else if (typing) e.target.blur();
+      else if (S.view === "dashboard" && M.st) go(M.lead ? mapHash({ lead: null }) : M.city ? mapHash({ city: "", lead: null }) : mapHash({ st: "", city: "", lead: null }));
+      return; }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (open) {
       if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); stepPanel(1); }
@@ -873,8 +1084,7 @@
       return;
     }
     if (typing || !S.data) return;
-    if (e.key === "/") { e.preventDefault(); if (S.view !== "leads" && S.view !== "buyers" && S.view !== "explore") location.hash = "#/leads";
-      setTimeout(() => $(S.view === "buyers" ? "b-search" : S.view === "explore" ? "x-search" : "f-search").focus(), 0); }
+    if (e.key === "/") { e.preventDefault(); $("q").focus(); }
     else if (e.key === "ArrowDown" || e.key === "j") { if (S.view === "leads") { e.preventDefault(); moveSel(1); } }
     else if (e.key === "ArrowUp" || e.key === "k") { if (S.view === "leads") { e.preventDefault(); moveSel(-1); } }
   });

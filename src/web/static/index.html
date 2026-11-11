@@ -13,17 +13,23 @@
   <header class="topbar" id="topbar">
     <div class="topbar-in">
       <a class="brand" href="#/" aria-label="Deal Radar home"><span class="mark" aria-hidden="true"></span>Deal Radar</a>
-      <nav class="nav" aria-label="Pages">
-        <a href="#/" data-view="dashboard">This week</a>
+      <div class="search" id="search">
+        <input type="search" id="q" placeholder="Search property, buyer or city" aria-label="Search property, buyer or city"
+          autocomplete="off" role="combobox" aria-expanded="false" aria-controls="q-results">
+        <ul class="q-results hidden" id="q-results" role="listbox"></ul>
+      </div>
+      <nav class="nav" aria-label="Views">
+        <a href="#/" data-view="dashboard">Map</a>
         <a href="#/leads" data-view="leads">Leads</a>
         <a href="#/buyers" data-view="buyers">Buyers</a>
-        <a href="#/map" data-view="map">Map</a>
-        <a href="#/overview" data-view="overview">The numbers</a>
-        <a href="#/how" data-view="how">How it works</a>
+        <a href="#/how" data-view="help" class="help" aria-label="How it works" title="How it works">?</a>
       </nav>
       <span class="asof" id="asof">Loading…</span>
     </div>
   </header>
+  <nav class="subnav hidden" id="subnav" aria-label="About the data">
+    <div class="wrap"><a href="#/overview" data-view="overview">The numbers</a><a href="#/how" data-view="how">How it works</a></div>
+  </nav>
 
   <div class="wrap state-msg" id="loading" role="status">
     <p class="state-title">Loading this week's leads…</p>
@@ -36,43 +42,26 @@
     <button class="btn" id="retry" type="button">Refresh</button>
   </div>
 
-  <!-- 1. Where should I look? -->
-  <main class="view hidden" id="view-dashboard">
-    <div class="wrap">
-      <header class="hero">
-        <p class="eyebrow" id="hero-eyebrow">Weekly briefing</p>
-        <h1 class="hero-title"><span id="hero-count">–</span> distressed properties.<br><em>Start with these three.</em></h1>
-        <p class="hero-sub" id="hero-sub"></p>
-      </header>
-      <section aria-labelledby="start-title">
-        <div class="sec-head">
-          <h2 id="start-title">Where to start</h2>
-          <p class="muted">The highest-ranked live deals, one per buyer, so you see three different situations.</p>
-        </div>
-        <div class="picks" id="picks"></div>
-      </section>
-      <section class="next" aria-label="Where to go next">
-        <a class="next-link" href="#/leads/A"><span class="n" id="next-a">–</span><span class="k">live deals with a buyer named in a source</span><span class="go">List A</span></a>
-        <a class="next-link" href="#/leads/B"><span class="n" id="next-b">–</span><span class="k">properties in distress before any sale</span><span class="go">List B</span></a>
-        <a class="next-link" href="#/buyers"><span class="n" id="next-buyers">–</span><span class="k">buyers taking properties over</span><span class="go">Buyers</span></a>
-        <a class="next-link" href="#/map"><span class="n" id="next-states">–</span><span class="k">states with at least one lead</span><span class="go">Map</span></a>
-      </section>
-      <section aria-labelledby="narrow-title">
-        <div class="sec-head">
-          <h2 id="narrow-title">How the list was narrowed</h2>
-          <p class="muted">Every building in the public record, filtered down to the ones worth a call.
-            <a href="#/how">How it works</a></p>
-        </div>
-        <ol class="narrow-row" id="narrow"></ol>
-      </section>
+  <!-- The map is the product. L0 USA > L1 state > L2 city > L3 property card > L4 research (the drawer). -->
+  <main class="view hidden console" id="view-dashboard">
+    <div class="rail">
+      <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+      <h1 id="m-title">United States</h1>
+      <dl class="hud" id="hud"></dl>
+      <div class="layers" id="layers" role="group" aria-label="Lists shown on the map"></div>
+      <div class="legend" id="legend"></div>
     </div>
+    <div class="mapstage" id="stage">
+      <svg id="map" viewBox="0 0 975 610" role="group" aria-label="Map of leads"></svg>
+      <div class="card hidden" id="card"></div>
+    </div>
+    <aside class="side hidden" id="side" aria-label="Leads in this area"></aside>
   </main>
 
   <!-- 2. What's happening at this property? -->
   <main class="view hidden" id="view-leads">
     <div class="wrap">
       <header class="page-head">
-        <p class="eyebrow">What is happening at each property</p>
         <h1>Leads</h1>
       </header>
       <section id="lists" tabindex="-1" aria-label="Lead list">
@@ -89,14 +78,14 @@
           <span id="result-count" class="muted" role="status"></span>
           <span class="result-tools">
             <span class="seg" role="group" aria-label="Layout">
-              <button type="button" id="mode-brief" aria-pressed="true">Brief</button>
-              <button type="button" id="mode-table" aria-pressed="false">Table</button>
+              <button type="button" id="mode-table" aria-pressed="true">Table</button>
+              <button type="button" id="mode-brief" aria-pressed="false">Brief</button>
             </span>
             <button class="btn quiet" id="download" type="button">Download CSV</button>
           </span>
         </div>
-        <div id="brief" class="brief"></div>
-        <div class="table-wrap hidden" id="table-wrap">
+        <div id="brief" class="brief hidden"></div>
+        <div class="table-wrap" id="table-wrap">
           <table id="table" class="grid"><thead id="thead"></thead><tbody id="tbody"></tbody></table>
         </div>
         <div class="empty hidden" id="empty">
@@ -105,9 +94,7 @@
           <button class="btn" id="empty-reset" type="button">Clear filters</button>
         </div>
         <div class="pager" id="pager"></div>
-        <p class="foot muted"><span class="keys">Use <kbd>↑</kbd> <kbd>↓</kbd> to move through leads, <kbd>Enter</kbd> to open one, <kbd>/</kbd> to search,
-          <kbd>Esc</kbd> to close. </span>Fields shown as <span class="nf">NOT FOUND</span> were not stated in any source.
-          Buildings below the bar are on the <a href="#/explore">watch list</a>.</p>
+        <p class="foot muted"><span class="nf">NOT FOUND</span> = no source states it. <a href="#/explore">Watch list</a></p>
       </section>
     </div>
   </main>
@@ -116,11 +103,8 @@
   <main class="view hidden" id="view-buyers">
     <div class="wrap">
       <header class="page-head">
-        <p class="eyebrow">Who is taking these properties over</p>
         <h1>Buyers</h1>
-        <p class="lede">Your borrower is usually the buyer or new operator, not the distressed owner. These are the buyers
-          public sources tie to leads on the list, most leads first. For buyers with a longer record, see the
-          <a href="#/leads/C">repeat buyers (List C)</a>.</p>
+        <p class="lede">The buyer is usually your borrower. <a href="#/leads/C">Repeat buyers (List C)</a></p>
       </header>
       <div class="filters">
         <input type="search" id="b-search" placeholder="Search buyer or property" aria-label="Search buyers">
@@ -131,34 +115,6 @@
       <div class="empty hidden" id="b-empty">
         <p class="state-title">No buyers match.</p>
         <p class="muted">Try a shorter search, or show all statuses.</p>
-      </div>
-      <p class="foot muted"><strong>Named</strong> means a source states this buyer. <strong>Candidate</strong> means a proposed or
-        stalking-horse bidder: not final, and another bidder may win. <strong>Unverified</strong> means an older or shell-company
-        name that has not been confirmed.</p>
-    </div>
-  </main>
-
-  <!-- 1b. Where should I look? (by geography) -->
-  <main class="view hidden" id="view-map">
-    <div class="wrap">
-      <header class="page-head">
-        <p class="eyebrow">Where the leads are</p>
-        <h1>Map</h1>
-        <p class="lede" id="map-hint">Darker states have more leads. Choose a state to see its leads.</p>
-      </header>
-      <div class="map-grid">
-        <div class="map-wrap">
-          <svg id="map" viewBox="0 0 975 610" role="img" aria-label="Map of leads by state"></svg>
-          <div class="legend" id="legend"></div>
-        </div>
-        <aside class="map-side" aria-live="polite">
-          <label class="lbl" for="m-state">State</label>
-          <select id="m-state"></select>
-          <h2 id="map-title">All states</h2>
-          <p class="muted" id="map-sub"></p>
-          <div id="map-list" class="map-list"></div>
-          <a class="btn" id="map-open" href="#/leads">Open in Leads</a>
-        </aside>
       </div>
     </div>
   </main>
@@ -250,8 +206,6 @@
       <div class="pager" id="x-pager"></div>
     </div>
   </main>
-
-  <footer class="site-foot"><div class="wrap">Public sources only. Each lead links to the filings, data sets and articles it rests on.</div></footer>
 
   <div class="scrim hidden" id="scrim"></div>
   <aside class="panel hidden" id="panel" role="dialog" aria-modal="true" aria-labelledby="p-title" aria-hidden="true">
