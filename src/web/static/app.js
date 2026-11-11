@@ -68,6 +68,15 @@
     ["Special Focus Facility", "Medicare's list of nursing homes with a history of serious quality problems."],
     ["List A / List B / List C", "A: live deals with a buyer named in a source. B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
   ];
+  const FLAG_TEXT = { buyer_chain_perf_missing: "no public quality record for the buyer's other properties",
+    family_capped: "part of a large bankruptcy that is counted as one deal", unconfirmed: "the match to this building is not yet confirmed",
+    court_name_only: "the court case was matched by name only", buyer_stale: "the buyer's name is more than two years old",
+    portfolio_link: "linked to a portfolio sale", senior_housing_maybe: "the care type is uncertain",
+    buyer_is_own_operator: "the buyer already operates this property", state_inferred: "the state was worked out from the city",
+    buyer_hospital_district: "the buyer is a public hospital district", buyer_mega_platform: "the buyer is a very large platform",
+    buyer_shell: "the buyer is a shell company", size_check: "the size needs checking",
+    buyer_not_found: null, size_unknown: null, sale_closed_over_12m: null, buyer_possible_insider: null };
+  const flagText = (f) => (f in FLAG_TEXT ? FLAG_TEXT[f] : pretty(f));
   const TABS = [
     { key: "all", label: "All leads" },
     { key: "A", label: "List A", sub: "live deals, buyer named" },
@@ -183,7 +192,7 @@
     if (r.buyer && r.buyer_group === "confirmed") parts.push("buyer named in a source");
     else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer, not final");
     else if (!r.buyer) parts.push("no buyer named yet");
-    if (bd.size_fit > 0) parts.push("size fits a $3–30M loan");
+    if (bd.size_fit > 0) parts.push("fits a $3–30M loan");
     if (bd.closed_sale_penalty < 0) parts.push("sale closed over a year ago");
     return parts;
   }
@@ -348,7 +357,7 @@
       return el("div", { class: "frow" + (f.step === "Shown on Deal Radar" ? " is-final" : ""), style: "--i:" + i + ";--w:" + w.toFixed(4) },
         el("div", { class: "lab" }, el("span", { class: "cnt", text: fmtInt(f.count), "data-n": f.count }), el("span", { class: "t", text: f.step })),
         el("div", { class: "barbox", "aria-hidden": "true" }, el("div", { class: "fbar" })),
-        el("div", { class: "rule-t", text: f.rule }));
+        el("div", { class: "rule-t", text: String(f.rule || "").replace("(see Explore)", "(see the watch list)") }));
     }));
   }
 
@@ -612,7 +621,9 @@
       const g = m.get(r.buyer); g.leads.push(r); g.groups[r.buyer_group] = (g.groups[r.buyer_group] || 0) + 1;
     }
     const out = [...m.values()];
+    S.repeat = new Map((S.data.list_c || []).map((c) => [String(c.buyer || "").trim().toLowerCase(), c]));
     for (const g of out) {
+      g.repeat = S.repeat.get(g.name.trim().toLowerCase()) || null;
       g.leads.sort((a, b) => a.rank - b.rank);
       g.group = ["confirmed", "candidate", "inferred"].find((k) => g.groups[k]) || "inferred";
       g.mixed = Object.keys(g.groups).length > 1;
@@ -638,10 +649,10 @@
     const q = $("b-search").value.trim().toLowerCase(), st = $("b-status").value;
     const rows = S.buyers.filter((g) => (!st || g.group === st) && (!q || g.name.toLowerCase().includes(q) || g.leads.some((r) => (r.property || "").toLowerCase().includes(q))));
     $("b-count").textContent = (rows.length === S.buyers.length ? fmtInt(rows.length) : fmtInt(rows.length) + " of " + fmtInt(S.buyers.length)) +
-      " buyers tied to " + plural(rows.reduce((a, g) => a + g.leads.length, 0), "property", "properties") + ", most properties first";
+      " buyers tied to " + plural(rows.reduce((a, g) => a + g.leads.length, 0), "lead") + ", most leads first";
     $("buyers").replaceChildren(...rows.map((g) => {
       const n = g.leads.length, SHOW = 4;
-      const more = n > SHOW ? el("details", { class: "more" }, el("summary", { text: "Show all " + fmtInt(n) + " properties" }),
+      const more = n > SHOW ? el("details", { class: "more" }, el("summary", { text: "Show all " + fmtInt(n) + " leads" }),
         el("div", { class: "leadlinks" }, g.leads.slice(SHOW).map((r) => leadLink(r, g.leads)))) : null;
       return el("article", { class: "buyer-row" },
         el("div", { class: "b-head" },
@@ -650,9 +661,11 @@
             g.type ? el("span", { class: "muted", text: g.type }) : null),
           g.group === "candidate" ? el("p", { class: "caveat", text: "Proposed or stalking-horse bidder. Not final: another bidder may win." }) : null),
         el("dl", { class: "b-facts" },
-          el("div", {}, el("dt", { text: n === 1 ? "Property" : "Properties" }), el("dd", { class: "big", text: fmtInt(n) })),
+          el("div", {}, el("dt", { text: n === 1 ? "Lead" : "Leads" }), el("dd", { class: "big", text: fmtInt(n) })),
           el("div", {}, el("dt", { text: g.states.length === 1 ? "State" : "States" }), el("dd", {}, g.states.length ? (g.states.length > 8 ? g.states.slice(0, 8).join(", ") + " +" + (g.states.length - 8) : g.states.join(", ")) : nf())),
-          el("div", {}, el("dt", { text: "Care" }), el("dd", {}, g.care.length ? g.care.join(" / ") : nf()))),
+          el("div", {}, el("dt", { text: "Care" }), el("dd", {}, g.care.length ? g.care.join(" / ") : nf())),
+          g.repeat ? el("div", {}, el("dt", { text: "Repeat buyer" }), el("dd", {}, plural(g.repeat.homes_in_list, "property", "properties") + " on record ",
+            safeUrl(g.repeat.public_source_link) ? ext(g.repeat.public_source_link, "source") : null)) : null),
         el("div", { class: "b-leads" }, el("div", { class: "leadlinks" }, g.leads.slice(0, SHOW).map((r) => leadLink(r, g.leads))), more));
     }));
     $("b-empty").classList.toggle("hidden", rows.length > 0);
@@ -751,7 +764,8 @@
         el("dt", { text: "Type" }), el("dd", {}, bd.buyer_type ? pretty(bd.buyer_type) + (bd.buyer_type_source ? (bd.buyer_type_source === "inferred" ? " (inferred)" : " (per " + pretty(bd.buyer_type_source) + ")") : "") : nf()),
         el("dt", { text: "Parent" }), el("dd", {}, bd.buyer_parent ? bd.buyer_parent + (bd.buyer_parent_basis ? " (" + pretty(bd.buyer_parent_basis) + ")" : "") : nf()),
         el("dt", { text: "Reported" }), el("dd", {}, bd.buyer_date ? fmtDate(bd.buyer_date) + (bd.buyer_date_basis ? " (" + pretty(bd.buyer_date_basis) + ")" : "") : nf()),
-        el("dt", { text: "Track record" }), el("dd", {}, peers.length ? "Also tied to " + plural(peers.length, "other property", "other properties") + " on this list" : "No other properties on this list")) : null,
+        el("dt", { text: "Track record" }), el("dd", {}, [peers.length ? "Also tied to " + plural(peers.length, "other lead") + " on this list" : "No other leads on this list",
+          S.repeat.get(r.buyer.trim().toLowerCase()) ? ". Repeat buyer: " + plural(S.repeat.get(r.buyer.trim().toLowerCase()).homes_in_list, "property", "properties") + " on record (List C)" : ""])) : null,
       peers.length ? el("div", { class: "leadlinks" }, peers.slice(0, 3).map((x) => leadLink(x, [r, ...peers])),
         peers.length > 3 ? el("a", { class: "morelink", href: "#/buyers", text: "See all in Buyers" }) : null) : null));
 
@@ -759,9 +773,9 @@
     sections.push(section(4, "Who to contact", contactBlock(r)));
 
     // 5. score breakdown
-    const parts = BD_LABELS.filter(([k]) => typeof bd[k] === "number" && Math.round(bd[k]) !== 0);
+    const parts = typeof bd.total === "number" ? BD_LABELS.filter(([k]) => typeof bd[k] === "number" && Math.round(bd[k]) !== 0) : [];
     const top = Math.max(1, ...parts.map(([k]) => Math.abs(bd[k])));
-    const gaps = r.not_found.map((f) => pretty(f)), flags = r.flags.filter((f) => f !== "buyer_possible_insider");
+    const gaps = r.not_found.map((f) => pretty(f)), flags = r.flags.map(flagText).filter(Boolean);
     sections.push(section(5, "Score breakdown", parts.length ? [
       ...parts.map(([k, label]) => el("div", { class: "bd-row" }, el("span", { text: label }),
         el("div", { class: "track" }, el("div", { class: "fill" + (bd[k] < 0 ? " neg" : ""), style: "width:" + (100 * Math.abs(bd[k])) / top + "%" })),
@@ -769,7 +783,7 @@
       el("div", { class: "bd-row total" }, el("span", { text: "Total" }), el("span"), el("span", { class: "v", text: String(Math.round(bd.total ?? r.score ?? 0)) })),
     ] : el("p", { class: "muted", text: "The point-by-point breakdown is not shown for this lead because part of its evidence is not public." }),
       gaps.length ? el("p", { class: "gaps" }, "Not stated in any source: ", gaps.map((g, i) => [i ? ", " : "", el("span", { class: "nf", text: g })])) : null,
-      flags.length ? el("p", { class: "muted small", text: "Notes from the rules: " + flags.map(pretty).join(", ") + "." }) : null));
+      flags.length ? el("p", { class: "muted small", text: "Notes from the rules: " + flags.join("; ") + "." }) : null));
 
     $("p-body").replaceChildren(...sections);
     $("p-body").scrollTop = 0;
@@ -819,10 +833,10 @@
         row("Website", web ? ext(web, hostOf(web)) : null, web),
         row("Address", full ? ext(mapsUrl(r), full) : null, full),
         row("Buyer's contact", null, null)),
-      el("p", { class: "muted small" }, "The property's main business line, not a person. ",
-        src.length ? ["Source: ", ...src.flatMap((u, i) => [i ? ", " : "", ext(u, hostOf(u))]), c.checked ? ", checked " + fmtDate(c.checked) + "." : "."]
-          : "No public phone or website is on file yet; the source links above are the best starting point.",
-        full ? null : [" ", ext(mapsUrl(r), "Search for it on a map")], "."));
+      el("p", { class: "muted small" },
+        src.length ? ["The property's main business line, not a person. Source: ", ...src.flatMap((u, i) => [i ? ", " : "", ext(u, hostOf(u))]), c.checked ? ", checked " + fmtDate(c.checked) + "." : "."]
+          : "No public phone or website is on file yet. The source links above are the best starting point.",
+        full ? null : [" ", ext(mapsUrl(r), "Search for it on a map"), "."]));
   }
   function closePanel() {
     const wasOpen = !$("panel").classList.contains("hidden");

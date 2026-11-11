@@ -226,7 +226,7 @@ table.grid td.reason { min-width: 220px; color: var(--muted); }
 .b-head h3 { font: 500 22px/1.25 var(--serif); overflow-wrap: anywhere; }
 .b-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 14.5px; }
 .caveat { margin-top: 8px; font-size: 14.5px; color: var(--nf); }
-.b-facts { display: flex; gap: 32px; margin: 0; }
+.b-facts { display: flex; gap: 12px 32px; margin: 0; flex-wrap: wrap; }
 .b-facts dt { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--muted); }
 .b-facts dd { margin: 2px 0 0; font-size: 15.5px; }
 .b-facts dd.big { font: 500 30px/1.1 var(--serif); color: var(--primary); font-variant-numeric: tabular-nums; }
@@ -362,6 +362,7 @@ path.mesh { fill: none; stroke: var(--paper); stroke-width: 1; pointer-events: n
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpi:nth-child(odd) { padding-left: 0; border-left: 0; }
   .kpi:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .rules { grid-template-columns: 1fr 1fr; }
   .map-grid { grid-template-columns: 1fr; gap: 24px; }
   .lead { grid-template-columns: 36px minmax(0, 1fr) 56px; }
