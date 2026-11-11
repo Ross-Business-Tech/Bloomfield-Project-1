@@ -168,7 +168,7 @@
   }
   function buyerLine(r) {
     return el("span", { class: "buyerline" }, el("span", { class: "k", text: "Buyer" }), " ", buyerChip(r.buyer_group),
-      r.buyer ? el("span", { class: "bname", text: r.buyer, title: r.buyer }) : null);
+      r.buyer ? buyerNameEl(r) : null);
   }
   function careText(r) { return r.care_types.length ? r.care_types.join(" / ") : null; }
   function metaLine(r) {
@@ -192,7 +192,7 @@
     else if (hard.length) parts.push(hard.map(sigName).join(" and ").toLowerCase().replace("chapter", "Chapter").replace("hud", "HUD").replace("(chow)", "(CHOW)").replace("(warn)", "(WARN)"));
     else if (r.signals.length) parts.push(r.signals.length + " separate distress signals");
     if (r.buyer && r.buyer_group === "confirmed") parts.push("buyer named in a source");
-    else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer, not final");
+    else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer (not final)");
     else if (!r.buyer) parts.push("no buyer named yet");
     if (bd.size_fit > 0) parts.push("fits a $3–30M loan");
     if (bd.care_type_fit > 0) parts.push("senior housing (care-type fit, an assumption)");
@@ -214,7 +214,10 @@
     if (!res.ok) throw new Error("snapshot " + res.status);
     S.data = await res.json();
     S.data.items = S.data.items || [];
-    for (const r of S.data.items) { for (const k of ["care_types", "signals", "flags", "sources", "lists", "not_found"]) r[k] = r[k] || []; }
+    for (const r of S.data.items) {
+      for (const k of ["care_types", "signals", "flags", "sources", "lists", "not_found"]) r[k] = r[k] || [];
+      if (/\(unnamed\)/i.test(r.buyer || "") && r.buyer_group === "confirmed") r.buyer_group = "candidate";     // a placeholder is never a named buyer
+    }
     S.byRank = S.data.items.slice().sort((a, b) => a.rank - b.rank);
     S.buyers = groupBuyers();
     $("asof").textContent = "As of " + fmtDate(S.data.generated_at);
@@ -465,6 +468,21 @@
     $("f-state").value = code;
     render();
   }
+  /* Buyer provenance notes (PR #17), built only from snapshot fields: flags, breakdown.buyer_parent(+basis),
+     breakdown.buyer_facilities_basis. No buyer names live in this file. */
+  const BASIS = { cms_chain: "CMS chain", cms: "CMS", source: "stated in a source", inferred: "inferred" };
+  const basisText = (b) => BASIS[b] || pretty(b);
+  function megaNote(r) {
+    if (!r.flags.includes("buyer_mega_platform")) return null;
+    const b = (r.breakdown || {}).buyer_facilities_basis;
+    return "mega-platform" + (b === "inferred" ? ", size inferred" : b ? ", size per " + basisText(b) : "");
+  }
+  function parentNote(r) {
+    const bd = r.breakdown || {};
+    return bd.buyer_parent ? "parent: " + bd.buyer_parent + (bd.buyer_parent_basis ? ", " + basisText(bd.buyer_parent_basis) : "") : null;
+  }
+  const buyerNotes = (r) => [parentNote(r), megaNote(r)].filter(Boolean).map((t) => "(" + t + ")").join(" ");
+  const buyerNameEl = (r, cls) => el("span", { class: cls || "bname", title: r.buyer }, r.buyer, buyerNotes(r) ? el("span", { class: "bnote", text: " " + buyerNotes(r) }) : null);
   const careMatch = (r, care) => !care || (care === "senior" ? r.care_types.some((t) => SENIOR_TYPES.includes(t)) : r.care_types.includes(care));
   function filtered() {
     const q = $("f-search").value.trim().toLowerCase();
@@ -528,7 +546,7 @@
       case "care": return el("td", {}, careText(r) || nf());
       case "units": return el("td", { class: "num" }, size(r) != null ? fmtInt(size(r)) : nf());
       case "stage": return el("td", {}, stageMark(r));
-      case "buyer": return el("td", { class: "buyer" }, buyerChip(r.buyer_group), r.buyer ? el("span", { class: "bname", text: r.buyer }) : null);
+      case "buyer": return el("td", { class: "buyer" }, buyerChip(r.buyer_group), r.buyer ? buyerNameEl(r) : null);
       case "score": return el("td", { class: "num strong", text: r.score == null ? "–" : String(Math.round(r.score)) });
       case "contact": return el("td", { class: "nowrap" }, telLink(r));
       default: return el("td");
@@ -623,6 +641,7 @@
       const bd = (g.leads.find((r) => (r.breakdown || {}).buyer_type) || {}).breakdown || {};
       g.type = bd.buyer_type ? pretty(bd.buyer_type) : null;
       g.insider = g.leads.some((r) => r.flags.includes("buyer_possible_insider"));
+      g.notes = [...new Set(g.leads.map(buyerNotes).filter(Boolean))];
     }
     return out.sort((a, b) => b.leads.length - a.leads.length || a.leads[0].rank - b.leads[0].rank);
   }
@@ -640,7 +659,7 @@
     const n = g.leads.length, SHOW = 3;
     const states = g.states.length > 6 ? plural(g.states.length, "state") : g.states.join(", ");
     return el("article", { class: "buyer-block" },
-      el("h3", { text: g.name }),
+      el("h3", {}, g.name, g.notes.length === 1 ? el("span", { class: "bnote", text: " " + g.notes[0] }) : null),
       el("p", { class: "b-meta" }, plural(n, "lead"), states ? " · " + states : "", g.care.length ? " · " + g.care.join(" / ") : "", g.type ? " · " + g.type : "",
         g.repeat ? " · List C: " + plural(g.repeat.acquisitions_36mo ?? g.repeat.homes_in_list, "home") + " acquired" : "",
         g.insider ? [" ", el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." })] : null),
@@ -929,7 +948,7 @@
       el("p", { class: "meta" }, [cityName(r.city), r.state].filter(Boolean).join(", ") || nf(), " · ", sizeText(r) || ["size ", nf()], " · ", careText(r) || ["care ", nf()]),
       el("p", { class: "why", text: whyShort(r) }),
       el("div", { class: "chips" }, stageMark(r), buyerChip(r.buyer_group), bd.size_fit > 0 ? el("span", { class: "chip plain", text: "fits $3–30M", "data-tip": "Size fit: " + sizeText(r) + " is inside the range the rules treat as a $3–30M loan. No dollar value is estimated." }) : null),
-      r.buyer ? el("p", { class: "bname", text: r.buyer }) : null,
+      r.buyer ? buyerNameEl(r, "bname p") : null,
       el("div", { class: "card-actions" },
         tel ? el("a", { class: "btn primary big", href: "tel:+1" + tel }, "Call ", el("span", { class: "tnum", text: phoneText(tel) }))
           : el("span", { class: "btn big nfbtn", role: "note" }, "Phone ", nf()),
@@ -1015,14 +1034,14 @@
     // 3. who is taking it over
     const peers = r.buyer ? (S.buyers.find((g) => g.name === r.buyer) || { leads: [] }).leads.filter((x) => x !== r) : [];
     sections.push(section(3, "Who is taking it over",
-      el("p", { class: "buyer-big" }, r.buyer ? el("strong", { text: r.buyer }) : null, " ", buyerChip(r.buyer_group),
+      el("p", { class: "buyer-big" }, r.buyer ? el("strong", { text: r.buyer }) : null, buyerNotes(r) ? el("span", { class: "bnote", text: buyerNotes(r) }) : null, " ", buyerChip(r.buyer_group),
         r.flags.includes("buyer_possible_insider") ? el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." }) : null),
       r.buyer_group === "candidate" ? el("p", { class: "caveat", text: "Proposed or stalking-horse bidder. Not final: another bidder may win." }) : null,
       r.buyer_group === "inferred" ? el("p", { class: "caveat", text: "This name is older or belongs to a shell company, and no recent source confirms it." }) : null,
       !r.buyer ? el("p", { class: "muted", text: "No public source names a buyer yet. That is the opening: financing is usually arranged once a buyer steps in." }) : null,
       r.buyer ? el("dl", { class: "facts" },
         el("dt", { text: "Type" }), el("dd", {}, bd.buyer_type ? pretty(bd.buyer_type) + (bd.buyer_type_source ? (bd.buyer_type_source === "inferred" ? " (inferred)" : " (per " + pretty(bd.buyer_type_source) + ")") : "") : nf()),
-        el("dt", { text: "Parent" }), el("dd", {}, bd.buyer_parent ? bd.buyer_parent + (bd.buyer_parent_basis ? " (" + pretty(bd.buyer_parent_basis) + ")" : "") : nf()),
+        el("dt", { text: "Parent" }), el("dd", {}, bd.buyer_parent ? bd.buyer_parent + (bd.buyer_parent_basis ? " (" + basisText(bd.buyer_parent_basis) + ")" : "") : nf()),
         el("dt", { text: "Reported" }), el("dd", {}, bd.buyer_date ? fmtDate(bd.buyer_date) + (bd.buyer_date_basis ? " (" + pretty(bd.buyer_date_basis) + ")" : "") : nf()),
         el("dt", { text: "Track record" }), el("dd", {}, [peers.length ? "Also tied to " + plural(peers.length, "other lead") + " on this list" : "No other leads on this list",
           S.repeat.get(r.buyer.trim().toLowerCase()) ? ". Repeat buyer: " + plural(S.repeat.get(r.buyer.trim().toLowerCase()).homes_in_list, "property", "properties") + " on record (List C)" : ""])) : null,
@@ -1069,7 +1088,7 @@
       "Size / care: " + (sizeText(r) || NFT) + ", " + (careText(r) || NFT),
       "Stage: " + (STAGE_LABEL[r.stage] || NFT) + (bd.latest_signal_date ? " (latest signal " + bd.latest_signal_date + ")" : ""),
       "Signals: " + (r.signals.map(sigName).join(", ") || NFT),
-      "Buyer: " + (r.buyer ? r.buyer + " (" + BUYER_LABEL[r.buyer_group].toLowerCase() + ")" : NFT),
+      "Buyer: " + (r.buyer ? r.buyer + (buyerNotes(r) ? " " + buyerNotes(r) : "") + " [" + BUYER_LABEL[r.buyer_group] + "]" : NFT),
       "Why: " + whyShort(r),
       "Phone: " + (phoneText(c.phone) || NFT), "Website: " + (c.website || NFT),
       "Address: " + ([c.street, r.city, [r.state, c.zip5].filter(Boolean).join(" ")].filter(Boolean).join(", ") || NFT),

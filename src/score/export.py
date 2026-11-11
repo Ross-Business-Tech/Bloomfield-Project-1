@@ -260,8 +260,8 @@ def repeat_buyers(conn, extra: list[dict] | None = None, months: int = 24, min_d
     """Organizations that bought or took over (buyer_status 'named') distressed assets in 2+ separate deals within
     `months`. One deal = one bankruptcy family, else one source announcement (an article naming 5 homes is one deal),
     else one home. Joint buyers ("A; B") credit each named entity. Buyers are grouped by parent org only when a
-    source states it (buyer_parent), otherwise by normalized name, so e.g. Focus Health Network is never merged into
-    Focus Healthcare Partners without proof. Parents come from config/buyer_orgs.yaml / the source, or CMS ownership
+    source states it (buyer_parent), otherwise by normalized name, so two firms that only share a
+    brand word are never merged without proof. Parents come from config/buyer_orgs.yaml / the source, or CMS ownership
     behind a shell. Hospital / public and lender buyers are left out (Gate 3 decisions); leads with no buyer date
     are left out. Both are counted."""
     from src.common.normalize import normalize_name

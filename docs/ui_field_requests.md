@@ -14,3 +14,9 @@ Fields the new UI would use if the snapshot carried them. Nothing here blocks th
 | `coord_source` other than `zip_centroid` (e.g. `address`) | Street-level pins. | Positions are ZIP-code centres: the legend says "approximate", the map never zooms closer than about a 60-mile window, and leads sharing a ZIP are fanned out around one dashed circle. 27 leads have no coordinates and appear in lists only. |
 
 Delivered since the first request (now used by the UI): `lead_id` (lead links and URL state), `lat` / `lon` / `coord_source` (city bubbles and pins), `summary` block (all headline counts), `rank_a` / `rank_b` (list positions).
+
+Added after PR #17:
+
+| Field (per lead) | Why | Today the UI does |
+|---|---|---|
+| `breakdown.buyer_facilities_basis` in the public snapshot | To say whether a mega-platform buyer's size is from CMS, a source, or inferred. The pipeline computes it, but the current snapshot does not carry it. | Flagged buyers read "(mega-platform)"; ", size inferred" is added only when the snapshot says the basis is inferred. |

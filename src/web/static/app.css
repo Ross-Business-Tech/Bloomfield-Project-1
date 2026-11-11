@@ -146,6 +146,9 @@ button.chip { cursor: help; }
 .buyerline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14.5px; min-width: 0; }
 .buyerline .k { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
 .bname { color: var(--text); overflow-wrap: anywhere; }
+.bnote { color: var(--muted); font-weight: 400; font-size: 0.92em; }
+.buyer-big .bnote { font-size: 15px; }
+.bname.p { display: block; font-size: 14.5px; }
 .tel { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
 .score { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
 .score b { font: 500 26px/1 var(--serif); color: var(--primary); font-variant-numeric: tabular-nums; }
