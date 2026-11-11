@@ -4,7 +4,8 @@
     python -m src.web.publish --confirm    # uploads site_snapshot.b64 as the Secret File, deploys, waits, checks /healthz
 
 Steps:
- 1. keep the previous upload as output/site_snapshot.prev.b64 (gitignored), then rebuild the snapshot (incl. contacts)
+ 1. rebuild the snapshot (incl. contacts); with --confirm the last uploaded file (site_snapshot.uploaded.b64) is kept
+    as output/site_snapshot.prev.b64 for rollback before the new one is sent (both gitignored)
  2. pack (gzip + base64); stop if the upload is over MAX_BYTES (Render: 1 MB for all Secret Files together)
  3. leak checks on the unpacked upload: private terms (eval/private/forbidden_terms.txt, reported as 'term #N'),
     'licensed:' tags, past-deal facility ids (eval/private/exclude_facilities_PRIVATE.txt), the client's name
@@ -40,6 +41,7 @@ def private_terms() -> tuple[list[str], list[str]]:
 
 
 PLACE_FIELDS = ("property", "city", "buyer")
+CITY_SLOT = __import__("re").compile(r"\([^,()]+, ([A-Z]{2}|NOT FOUND)\)")
 
 
 def mask_place_names(snap: dict) -> dict:
@@ -58,6 +60,10 @@ def mask_place_names(snap: dict) -> dict:
             for f in PLACE_FIELDS:
                 if isinstance(r.get(f), str):
                     r[f] = rx.sub("", r[f])
+    # List C example homes are written "NAME (CITY, ST)": only the city slot of that pattern is blanked
+    for r in out.get("list_c") or []:
+        if isinstance(r, dict) and isinstance(r.get("example_homes"), str):
+            r["example_homes"] = CITY_SLOT.sub(r"(, \1)", r["example_homes"])
     return out
 
 
@@ -100,8 +106,6 @@ def unwrap(x: dict, k: str) -> dict:
 def build() -> tuple[Path, dict]:
     from src.web import snapshot
     b64 = OUTPUT_DIR / SECRET_FILE
-    if b64.exists():
-        shutil.copy2(b64, OUTPUT_DIR / "site_snapshot.prev.b64")
     snapshot.main(["--out", str(OUTPUT_DIR / "site_snapshot.json")])
     return b64, json.loads(gzip.decompress(base64.b64decode(b64.read_bytes().strip())))
 
@@ -161,10 +165,14 @@ def main(argv=None) -> int:
     import httpx
     with client(key) as h:
         url = ((h.get(f"/services/{SERVICE_ID}").json().get("serviceDetails") or {}).get("url") or "").rstrip("/")
+        uploaded = OUTPUT_DIR / "site_snapshot.uploaded.b64"     # the last file that went to Render
+        if uploaded.exists():
+            shutil.copy2(uploaded, OUTPUT_DIR / "site_snapshot.prev.b64")   # rollback copy
         r = h.put(f"/services/{SERVICE_ID}/secret-files/{SECRET_FILE}", json={"content": b64.read_text().strip()})
         print("upload:", r.status_code)
         if r.status_code >= 300:
             return 3
+        shutil.copy2(b64, uploaded)
         r = h.post(f"/services/{SERVICE_ID}/deploys", json={"clearCache": "do_not_clear"})
         dep = unwrap(r.json(), "deploy") if r.status_code < 300 else {}
         print("deploy:", r.status_code, dep.get("id"))

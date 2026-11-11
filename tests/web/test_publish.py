@@ -16,3 +16,9 @@ def test_licensed_tag_and_client_name_fail(monkeypatch):
     assert publish.leak_check('{"a": "licensed:x"}') == ["'licensed:' tag (1x)"]
     assert publish.leak_check('{"a": "zzprivatezz"}') == ["term #1 (1x)"]
     assert publish.leak_check('{"a": "' + publish.CLIENT_TERM.title() + ' deal"}') == ["client name (1x)"]
+
+
+def test_list_c_example_city_slot_is_masked():
+    m = publish.mask_place_names({"list_c": [{"buyer": "Springvale Group", "example_homes": "Oak (SPRINGVALE, MO); Elm (X, NOT FOUND)"}]})
+    assert m["list_c"][0]["example_homes"] == "Oak (, MO); Elm (, NOT FOUND)"
+    assert m["list_c"][0]["buyer"] == "Springvale Group"           # a buyer name is never masked

@@ -65,6 +65,7 @@ def main() -> int:
             page.wait_for_timeout(300)
             page.locator("#tbody tr td.prop").first.click()
             page.wait_for_selector("#panel:not(.hidden)")
+            page.wait_for_timeout(500)                 # let the 0.3 s slide-in finish
             path = OUT / f"site_{name}_detail.png"
             page.screenshot(path=str(path), full_page=False)
             shots.append(path)
