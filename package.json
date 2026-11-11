@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "smoke": "node scripts/smoke-test.cjs",
-    "publish:preview": "node scripts/herenow-publish.mjs preview"
+    "publish:preview": "node scripts/herenow-publish.mjs preview",
+    "preview:radar": "python3 tools/build_preview.py && HERENOW_DIST_DIR=preview-dist HERENOW_SKIP_BUILD=1 node scripts/herenow-publish.mjs preview"
   },
   "dependencies": {
     "react": "^19.3.1",

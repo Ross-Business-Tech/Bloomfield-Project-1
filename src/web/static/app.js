@@ -50,6 +50,16 @@
   const safeUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : null);
   const fmtInt = (n) => Number(n).toLocaleString("en-US");
   const size = (r) => r.units || r.beds || null;
+  const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const phoneText = (d) => { d = String(d || "").replace(/\D/g, ""); return d.length === 10 ? "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6) : null; };
+  const addressText = (c) => [c.street, c.zip5].filter(Boolean).join(", ");
+  const mapsUrl = (r) => { const c = r.contact || {};
+    const q = [r.property, c.street, r.city, r.state, c.zip5].filter(Boolean).join(", ");
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q); };
+  function telLink(r) {
+    const d = (r.contact || {}).phone;
+    return d ? el("a", { class: "tel", href: "tel:+1" + d, text: phoneText(d), onclick: (e) => e.stopPropagation() }) : nf();
+  }
 
   /* ---------- data ---------- */
   async function load() {
@@ -68,19 +78,22 @@
     buildFunnel();
     buildExplore();
     window.addEventListener("hashchange", route);
+    window.addEventListener("scroll", () => $("topbar").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
     route();
+    animateHero();
   }
 
   /* ---------- pages ---------- */
-  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/how": "how", "#/funnel": "funnel", "#/explore": "explore" };
+  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/funnel": "dashboard", "#/how": "how", "#/explore": "explore" };
   function route() {
     const v = VIEWS[location.hash] || "dashboard";
     S.view = v;
-    for (const id of ["dashboard", "how", "funnel", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
+    for (const id of ["dashboard", "how", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === v));
-    $("download").classList.toggle("hidden", v === "how" || v === "funnel");
+    $("download").classList.toggle("off", v === "how");   // keeps its place: the header never shifts
     closePanel();
     window.scrollTo(0, 0);
+    if (v === "dashboard") animateHero();
   }
 
   function buildHow() {
@@ -125,13 +138,33 @@
   function buildFunnel() {
     const F = S.data.funnel || [];
     const max = d3.max(F, (f) => f.count) || 1;
-    const w = d3.scaleLog().domain([1, max]).range([4, 100]).clamp(true);
-    $("funnel").replaceChildren(...F.map((f) => el("div", { class: "frow" },
-      el("div", { class: "lab" }, f.list ? el("span", { class: "dot " + f.list.toLowerCase() }) : null, " " + f.step,
-        el("span", { class: "cnt", text: fmtInt(f.count) })),
+    const w = d3.scaleLog().domain([1, max]).range([0.03, 1]).clamp(true);
+    $("funnel").replaceChildren(...F.map((f, i) => el("div", { class: "frow" },
+      el("div", { class: "lab" }, el("span", { class: "cnt", text: fmtInt(f.count), "data-n": f.count }),
+        el("span", { class: "t" }, f.list ? [el("span", { class: "dot " + f.list.toLowerCase() }), " "] : null, f.step)),
       el("div", { class: "barbox" }, el("div", { class: "fbar" + (f.list ? " " + f.list.toLowerCase() : ""),
-        style: "width:" + w(Math.max(1, f.count)) + "%", title: f.step + ": " + fmtInt(f.count) })),
+        style: "--w:" + w(Math.max(1, f.count)).toFixed(4) + ";--i:" + i, title: f.step + ": " + fmtInt(f.count) })),
       el("div", { class: "rule-t", text: f.rule }))));
+  }
+
+  /* One orchestrated moment: the headline numbers count up and the funnel bars grow, once per visit to the page. */
+  function countUp(node) {
+    const n = Number(node.dataset.n);
+    if (REDUCED || !isFinite(n) || n < 2) return;
+    const suffix = node.dataset.suffix || "", t0 = performance.now(), dur = 900;
+    const tick = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      node.textContent = fmtInt(Math.round(n * e)) + suffix; if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+  function animateHero() {
+    const f = $("funnel");
+    f.classList.remove("in");
+    document.querySelectorAll("#kpis [data-n]").forEach(countUp);
+    const go = () => { f.classList.add("in"); document.querySelectorAll("#funnel [data-n]").forEach(countUp); };
+    if (REDUCED || !("IntersectionObserver" in window)) return go();
+    if (S.io) S.io.disconnect();
+    S.io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { S.io.disconnect(); setTimeout(go, 60); } }, { threshold: 0.25 });
+    S.io.observe(f);
   }
 
   /* ---------- explore (watch list) ---------- */
@@ -145,8 +178,9 @@
     $("x-signal").replaceChildren(option("", "All signals"), ...sigs.map((c) => option(c, pretty(c))));
     for (const id of ["x-search", "x-state", "x-care", "x-signal"]) $(id).addEventListener("input", () => { X.page = 1; renderExplore(); });
     $("x-reset").addEventListener("click", () => { for (const id of ["x-search", "x-state", "x-care", "x-signal"]) $(id).value = ""; X.page = 1; renderExplore(); });
-    $("x-thead").replaceChildren(el("tr", {}, ["Property", "City / state", "Care type", "Units", "Signals", "Why not on the main list", "Score", "Sources"]
-      .map((h) => el("th", { text: h }))));
+    $("x-thead").replaceChildren(el("tr", {}, [["Property", ""], ["City / state", "c-state"], ["Care type", "c-care"], ["Units", "c-units"],
+      ["Signals", "c-signals"], ["Why not on the main list", "c-reason"], ["Score", "c-score"], ["Sources", "c-sources"]]
+      .map(([h, c]) => el("th", { text: h, class: c }))));
     renderExplore();
   }
   function exploreRows() {
@@ -202,18 +236,18 @@
     const named = items.filter((r) => r.buyer_group === "confirmed").length;
     const cnt = (k) => items.filter((r) => r.lists.includes(k)).length;
     const cards = [
-      ["Total leads", fmtInt(n), "public sources only", null],
-      ["List A", fmtInt(cnt("A")), "live deals, named buyer", "a"],
-      ["List B", fmtInt(cnt("B")), "pre-sale distress", "b"],
-      ["List C", fmtInt((S.data.list_c || []).length), "repeat buyers", "c"],
-      ["AL / IL / MC / CCRC", n ? Math.round((100 * senior) / n) + "%" : "–", fmtInt(senior) + " senior-housing leads", null],
-      ["States covered", fmtInt(states), "with at least one lead", null],
-      ["Named buyer", n ? Math.round((100 * named) / n) + "%" : "–", fmtInt(named) + " confirmed in a source", null],
+      ["Total leads", fmtInt(n), "public sources only", null, n, ""],
+      ["List A", fmtInt(cnt("A")), "live deals, named buyer", "a", cnt("A"), ""],
+      ["List B", fmtInt(cnt("B")), "pre-sale distress", "b", cnt("B"), ""],
+      ["List C", fmtInt((S.data.list_c || []).length), "repeat buyers", "c", (S.data.list_c || []).length, ""],
+      ["Senior housing", n ? Math.round((100 * senior) / n) + "%" : "–", fmtInt(senior) + " AL / IL / MC / CCRC leads", null, n ? Math.round((100 * senior) / n) : null, "%"],
+      ["States covered", fmtInt(states), "with at least one lead", null, states, ""],
+      ["Named buyer", n ? Math.round((100 * named) / n) + "%" : "–", fmtInt(named) + " confirmed in a source", null, n ? Math.round((100 * named) / n) : null, "%"],
     ];
-    $("kpis").replaceChildren(...cards.map(([label, value, sub, dot]) =>
+    $("kpis").replaceChildren(...cards.map(([label, value, sub, dot, num, suffix]) =>
       el("div", { class: "kpi" },
         el("div", { class: "label" }, dot ? el("span", { class: "dot " + dot }) : null, label),
-        el("div", { class: "value", text: value }),
+        el("div", { class: "value", text: value, "data-n": num, "data-suffix": suffix }),
         el("div", { class: "sub", text: sub }))));
   }
 
@@ -266,8 +300,8 @@
       class: "tab " + t.cls, role: "tab", type: "button", "aria-selected": String(S.tab === t.key), "data-tab": t.key,
       onclick: () => { S.tab = t.key; S.page = 1; S.sort = { key: "rank", dir: 1 }; buildTabs(); render(); },
     }, el("span", { class: "dot " + t.cls }), t.label, el("span", { class: "count", text: fmtInt(counts[t.key] || 0) }))));
-    const leadFilters = ["f-state", "f-care", "f-stage", "f-buyer"];
-    for (const id of leadFilters) $(id).classList.toggle("hidden", S.tab === "C");
+    for (const id of ["f-state", "f-care", "f-stage"]) $(id).classList.toggle("hidden", S.tab === "C");
+    $("f-buyer").classList.toggle("hidden", S.tab !== "A");
     document.querySelector(".range").classList.toggle("hidden", S.tab === "C");
   }
 
@@ -303,6 +337,7 @@
   }
 
   /* ---------- table ---------- */
+  // Widths live in CSS (.c-<key>) and are fixed, so List A and List B line up column for column; Property flexes.
   const LEAD_COLS = [
     { key: "rank", label: "#", sort: (r) => r.rank },
     { key: "property", label: "Property", sort: (r) => r.property || "" },
@@ -311,9 +346,9 @@
     { key: "units", label: "Units", sort: (r) => size(r) ?? -1, num: true },
     { key: "signals", label: "Signals" },
     { key: "stage", label: "Stage", sort: (r) => STAGES.indexOf(r.stage) },
-    { key: "buyer", label: "Buyer", sort: (r) => r.buyer || "~" },
+    { key: "buyer", label: "Buyer", sort: (r) => r.buyer || "~", onlyTab: "A" },   // List B never has a buyer: column left out
     { key: "score", label: "Score", sort: (r) => r.score ?? 0 },
-    { key: "sources", label: "Sources", sort: (r) => r.sources.length, num: true },
+    { key: "contact", label: "Phone", sort: (r) => (r.contact || {}).phone || "~" },
   ];
   const C_COLS = [
     { key: "rank", label: "#", sort: (c) => c.rank },
@@ -337,7 +372,7 @@
       case "buyer": return el("td", { class: "buyer" }, r.buyer ? el("span", { class: "bname", text: r.buyer }) : nf(), " ",
         statusBadge(r), r.flags.includes("buyer_possible_insider") ? el("span", { class: "badge insider", text: "possible insider" }) : null);
       case "score": return el("td", {}, scoreBar(r.score));
-      case "sources": return el("td", { class: "num" }, r.sources.length ? String(r.sources.length) : nf());
+      case "contact": return el("td", {}, telLink(r));
       default: return el("td");
     }
   }
@@ -368,7 +403,10 @@
     if (!S.data) return;
     S.maxScore = d3.max(S.data.items, (r) => r.score) || 1;
     const isC = S.tab === "C";
-    const cols = isC ? C_COLS : LEAD_COLS;
+    const cols = isC ? C_COLS : LEAD_COLS.filter((c) => !c.onlyTab || c.onlyTab === S.tab);
+    $("colgroup").replaceChildren(...cols.map((c) => el("col", { class: "c-" + c.key })));
+    $("f-buyer").classList.toggle("hidden", isC || S.tab === "B");
+    if (S.tab === "B") $("f-buyer").value = "";
     let rows = filtered();
     const col = cols.find((c) => c.key === S.sort.key && c.sort) || cols[0];
     rows = rows.slice().sort((a, b) => { const x = col.sort(a), y = col.sort(b); return (x > y ? 1 : x < y ? -1 : 0) * S.sort.dir; });
@@ -376,12 +414,13 @@
     $("thead").replaceChildren(el("tr", {}, cols.map((c) => el("th", {
       class: (c.sort ? "sortable" : "") + (c.num ? " num" : ""), scope: "col",
       "aria-sort": S.sort.key === c.key ? (S.sort.dir > 0 ? "ascending" : "descending") : null,
-      onclick: c.sort ? () => { S.sort = { key: c.key, dir: S.sort.key === c.key ? -S.sort.dir : (c.key === "score" || c.key === "sources" || c.key === "units" || c.key === "homes" ? -1 : 1) }; render(); } : null,
+      onclick: c.sort ? () => { S.sort = { key: c.key, dir: S.sort.key === c.key ? -S.sort.dir : (c.key === "score" || c.key === "units" || c.key === "homes" ? -1 : 1) }; render(); } : null,
     }, c.label, S.sort.key === c.key ? el("span", { class: "arrow", text: S.sort.dir > 0 ? "▲" : "▼" }) : null))));
     const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     S.page = Math.min(S.page, pages);
     const slice = rows.slice((S.page - 1) * PAGE_SIZE, S.page * PAGE_SIZE);
-    $("tbody").replaceChildren(...slice.map((r) => el("tr", isC ? {} : {
+    $("tbody").replaceChildren(...slice.map((r, i) => el("tr", isC ? { class: "row-in", style: "animation-delay:" + Math.min(i, 12) * 18 + "ms" } : {
+      class: "row-in", style: "animation-delay:" + Math.min(i, 12) * 18 + "ms",
       tabindex: 0, onclick: () => openPanel(r), onkeydown: (e) => { if (e.key === "Enter") openPanel(r); },
     }, cols.map((c) => (isC ? cCell(c, r) : cell(c, r))))));
     const total = isC ? (S.data.list_c || []).length : S.data.items.filter((r) => r.lists.includes(S.tab)).length;
@@ -408,7 +447,7 @@
       el("span", { text: (r.lists.length ? "List " + r.lists.join(" · ") + " · " : "") + "Rank " + r.rank }));
     $("p-title").textContent = r.property || "";
     $("p-sub").replaceChildren(r.city || r.state ? [r.city, r.state].filter(Boolean).join(", ") : nf());
-    const sections = [el("div", { class: "why" }, el("strong", { text: "Why this lead" }), whyThisLead(r))];
+    const sections = [contactBlock(r), el("div", { class: "why" }, el("strong", { text: "Why this lead" }), whyThisLead(r))];
 
     // facts (NOT FOUND highlighted)
     const facts = [["City", r.city], ["State", r.state && (STATES[r.state] || r.state)],
@@ -445,7 +484,7 @@
     // buyer block
     const conf = { confirmed: "Named in a source", candidate: "Candidate (proposed / stalking horse)",
       inferred: "Inferred (parent matched by brand, or a shell / older buyer)", none: "No buyer found" }[r.buyer_group];
-    sections.push(section("Buyer", el("dl", { class: "facts" },
+    if (r.buyer || r.lists.includes("A")) sections.push(section("Buyer", el("dl", { class: "facts" },
       el("dt", { text: "Name" }), el("dd", {}, r.buyer || nf()),
       el("dt", { text: "Status" }), el("dd", {}, statusBadge(r), r.flags.includes("buyer_possible_insider") ? [" ", el("span", { class: "badge insider", text: "possible insider" })] : null),
       el("dt", { text: "Type" }), el("dd", {}, bd.buyer_type ? pretty(bd.buyer_type) + (bd.buyer_type_source ? " (" + bd.buyer_type_source + ")" : "") : nf()),
@@ -473,6 +512,34 @@
     $("p-close").focus();
     void tabKey;
   }
+  /* ---------- contact (business contact points only; each with its public source) ---------- */
+  function copyButton(text) {
+    return el("button", { class: "copy", type: "button", text: "Copy", onclick: (e) => {
+      const b = e.currentTarget, done = () => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => {});
+      else done();
+    } });
+  }
+  function contactBlock(r) {
+    const c = r.contact || {}, web = safeUrl(c.website), tel = c.phone, addr = addressText(c);
+    const act = (label, href, primary) => el("a", { class: "btn " + (primary ? "primary" : "solid") + (href ? "" : " off"),
+      href: href || null, target: href && !href.startsWith("tel:") ? "_blank" : null, rel: "noopener noreferrer", "aria-disabled": href ? null : "true", text: label });
+    const row = (k, v, copy) => [el("dt", { text: k }), el("dd", {}, v || nf()), el("span", {}, v && copy ? copyButton(copy) : null)];
+    const src = [c.phone_source, c.website_source].map(safeUrl).filter(Boolean);
+    return el("div", { class: "contact" }, el("h3", { text: "Contact this property" }),
+      el("div", { class: "contact-actions" },
+        act(tel ? "Call " + phoneText(tel) : "Call", tel ? "tel:+1" + tel : null, true),
+        act("Website", web, false), act("Map", mapsUrl(r), false)),
+      el("dl", { class: "contact-rows" },
+        ...[row("Phone", tel ? el("a", { class: "tel", href: "tel:+1" + tel, text: phoneText(tel) + (c.phone_label ? "  " + c.phone_label : "") }) : null, tel ? phoneText(tel) : null)]
+          .map((x) => el("div", { class: "crow" }, x)),
+        el("div", { class: "crow" }, row("Website", web ? el("a", { href: web, target: "_blank", rel: "noopener noreferrer", text: hostOf(web) }) : null, web)),
+        el("div", { class: "crow" }, row("Address", addr || r.city ? [c.street, r.city, [r.state, c.zip5].filter(Boolean).join(" ")].filter(Boolean).join(", ") : null, addr ? [r.property, addr, r.city, r.state].filter(Boolean).join(", ") : null))),
+      el("p", { class: "contact-foot" }, src.length
+        ? ["Source: ", ...src.flatMap((u, i) => [i ? ", " : "", el("a", { href: u, target: "_blank", rel: "noopener noreferrer", text: hostOf(u) })]),
+           c.checked ? " (checked " + c.checked + ")" : ""]
+        : "No public contact details on file yet. Check the source links below."));
+  }
   function section(title, ...kids) { return el("div", { class: "section" }, el("h3", { text: title }), ...kids); }
   function closePanel() {
     $("panel").classList.add("hidden"); $("scrim").classList.add("hidden"); $("panel").setAttribute("aria-hidden", "true");
@@ -499,11 +566,13 @@
       header = ["rank", "buyer", "homes_in_list", "example_homes", "public_source_link"];
       lines = S.rows.map((c) => header.map((k) => c[k]));
     } else {
-      header = ["list", "rank", "property", "city", "state", "care_type", "units_or_beds", "signals", "stage", "buyer",
-        "buyer_status", "score", "sources", "not_found"];
-      lines = S.rows.map((r) => [S.tab, r.rank, r.property, r.city || "NOT FOUND", r.state || "NOT FOUND",
-        r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND", r.signals.join(";"), r.stage, r.buyer || "NOT FOUND",
-        r.buyer_group, r.score, r.sources.join(" "), r.not_found.join(";")]);
+      header = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds", "signals",
+        "stage", ...(S.tab === "A" ? ["buyer", "buyer_status"] : []), "score", "sources", "not_found"];
+      lines = S.rows.map((r) => { const c = r.contact || {};
+        return [S.tab, r.rank, r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
+          phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
+          r.signals.join(";"), r.stage, ...(S.tab === "A" ? [r.buyer || "NOT FOUND", r.buyer_group] : []), r.score,
+          r.sources.join(" "), r.not_found.join(";")]; });
     }
     const csv = [header, ...lines].map((l) => l.map(csvCell).join(",")).join("\n");
     const a = el("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })),
