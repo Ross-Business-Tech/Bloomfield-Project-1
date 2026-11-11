@@ -64,7 +64,7 @@ def test_pages_with_password_are_noindex(site):
     assert "default-src 'self'" in headers["Content-Security-Policy"]
     code, _, body = get(site + "/api/snapshot.json", PW)
     data = json.loads(body)
-    assert code == 200 and set(data) == {"generated_at", "counts", "items", "list_c"}
+    assert code == 200 and set(data) == set(server.SNAPSHOT_KEYS)
     assert {i["property"] for i in data["items"]} == {"<b>Acme Manor</b>", "Birch Home"}   # rendered as text in the UI
     assert get(site + "/static/app.js", PW)[0] == 200 and get(site + "/static/../server.py", PW)[0] == 404
     assert get(site + "/api/list_a.json", PW)[0] == 200
@@ -139,3 +139,58 @@ def test_real_snapshot_from_the_public_view():
 def test_server_has_no_database_or_key_access():
     code = re.sub(r'"""[\s\S]*?"""', "", Path(server.__file__).read_text())
     assert not re.search(r"psycopg|httpx|supabase|SUPABASE|ANTHROPIC|COURTLISTENER|^\s*(from|import) src\.", code, re.M)
+
+
+def test_packed_upload_round_trips_and_stays_under_the_render_limit(tmp_path):
+    snap = snapshot.build(ROWS, {"past-deal"})
+    snap.update(explore=[], funnel=[], sources_table=[], rules={})
+    out = tmp_path / "site_snapshot.json"
+    snapshot.write(snap, out)
+    packed = out.with_suffix(".b64")
+    assert packed.stat().st_size < snapshot.UPLOAD_LIMIT
+    back = server.load_snapshot(str(packed))
+    assert back["counts"] == snap["counts"] and back["list_a"][0]["property"] == "<b>Acme Manor</b>"   # rebuilt
+    assert set(back) >= {"leads", "list_a", "list_b", "top20"}
+
+
+def _private_terms() -> list[str]:
+    """The private term list (eval/private, gitignored): provider names, partner name, past deals. Empty in CI."""
+    p = Path(__file__).resolve().parents[2] / "eval" / "private" / "forbidden_terms.txt"
+    if not p.exists():
+        return []
+    return [t.strip().lower() for t in p.read_text().splitlines() if t.strip() and not t.startswith("#")]
+
+
+def test_sources_table_names_only_public_sources():
+    ids = [s[0] for s in snapshot.SOURCES]
+    assert "licensed_data" not in ids and not any("licensed" in s[0] for s in snapshot.SOURCES)
+    text = json.dumps(snapshot.SOURCES).lower()
+    assert "licensed" not in text
+    assert not [t for t in _private_terms() if t in text]
+
+
+def test_real_extra_pages_have_no_private_traces():
+    """Database + score-run check (skipped offline): Explore, funnel and sources carry no licensed traces and no
+    past-deal homes."""
+    if not snapshot.EXCLUDE_FILE.exists():
+        pytest.skip("no private exclusion list")
+    try:
+        from src.common.db import connect
+        conn = connect()
+    except Exception:
+        pytest.skip("no database connection")
+    with conn:
+        skip = snapshot.excluded()
+        names = {(r["n"].upper(), (r["c"] or "").upper(), r["s"] or "") for r in conn.execute(
+            "select canonical_name n, city c, state s from core.facility where facility_id = any(%s::uuid[])", (list(skip),))}
+        rows = snapshot.watch_rows(names)
+        snap = {"counts": {"leads": 0, "list_a": 0, "list_b": 0, "list_c": 0}}
+        extra = {"explore": rows, "funnel": snapshot.funnel(conn, snap, len(rows)), "sources": snapshot.source_rows(conn),
+                 "rules": snapshot.rules_block()}
+    text = json.dumps({k: v for k, v in extra.items() if k != "explore"}, default=str).lower()
+    assert "licensed" not in json.dumps(extra, default=str).lower()
+    assert not [t for t in _private_terms() if t in text]          # funnel / sources / rules text
+    for n, c, st in names:
+        assert not any(r["property"].upper() == n and (r["city"] or "").upper() == c for r in rows), n
+    assert all(r["sources"] and all(u.startswith("http") for u in r["sources"]) for r in rows)
+    assert all("hard event" in r["reason"] or "broker sale" in r["reason"] for r in rows)

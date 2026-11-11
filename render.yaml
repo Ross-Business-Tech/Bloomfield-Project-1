@@ -18,7 +18,7 @@ services:
       - key: SITE_PASSWORD          # basic-auth password for every page (8+ characters)
         sync: false
       - key: SNAPSHOT_PATH          # Secret File path (Render mounts secret files under /etc/secrets/)
-        value: /etc/secrets/site_snapshot.json
+        value: /etc/secrets/site_snapshot.b64
 
   # Daily pipeline run: NOT ENABLED (decision Nov 10, 2026: no paid items; Render cron jobs cost at least $1 / month
   # each, render.com/docs/cronjobs). Left as a reference:
