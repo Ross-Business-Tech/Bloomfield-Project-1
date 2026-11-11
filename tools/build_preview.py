@@ -105,6 +105,8 @@ def main() -> int:
     snap["rules"] = snapshot.rules_block() if _has_rules() else {}
     snap["demo"] = True
 
+    if OUT.resolve() != ROOT.resolve() / "preview-dist":
+        raise ValueError("Preview output must stay in the project's preview-dist directory")
     if OUT.exists():
         shutil.rmtree(OUT)
     (OUT / "static").mkdir(parents=True)
@@ -113,7 +115,7 @@ def main() -> int:
     for name in ("app.js", "app.css", "states-albers-10m.json"):
         shutil.copy(STATIC / name, OUT / "static" / name)
     keys = ("generated_at", "counts", "items", "list_c", "explore", "funnel", "sources_table", "rules")
-    (OUT / "api" / "snapshot.json").write_text(json.dumps({k: snap.get(k) for k in keys}, ensure_ascii=False, default=str))
+    (OUT / "api" / "snapshot.json").write_text(json.dumps({k: snap.get(k) for k in keys}, ensure_ascii=False, default=str), encoding="utf-8")
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     banner = ('<div style="background:#c9a66b;color:#0b1f3a;text-align:center;font:600 13px Inter,system-ui,sans-serif;padding:7px 12px">'
               'PREVIEW with made-up sample data. Names, phone numbers and links are invented.</div>')

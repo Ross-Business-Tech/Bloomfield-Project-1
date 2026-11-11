@@ -275,7 +275,10 @@ def test_page_loads_no_outside_scripts_and_bundled_libraries_are_served(site):
     assert "script-src 'self';" in _get(site, "/").headers["Content-Security-Policy"]
 
 
-def test_funnel_is_part_of_the_dashboard_page():
+def test_key_numbers_and_funnel_share_the_overview_page():
     html = (server.STATIC_DIR / "index.html").read_text()
     assert 'id="view-funnel"' not in html and 'data-view="funnel"' not in html
-    assert html.index('id="kpis"') < html.index('id="funnel"') < html.index('id="map"')
+    overview = re.search(r'<main[^>]+id="view-overview"[^>]*>(.*?)</main>', html, re.S).group(1)
+    assert 'id="kpis"' in overview and 'id="funnel"' in overview
+    assert 'id="map"' not in overview
+    assert html.index('data-view="dashboard"') < html.index('data-view="overview"') < html.index('data-view="how"')

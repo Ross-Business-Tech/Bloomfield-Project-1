@@ -76,7 +76,7 @@ def main() -> int:
             path = OUT / f"site_{name}_list_c.png"
             page.locator("#view-dashboard .list-card").screenshot(path=str(path))
             shots.append(path)
-            for view in ("how", "funnel", "explore"):
+            for view in ("overview", "how", "explore"):
                 page.goto(base + "/#/" + view, wait_until="networkidle")
                 page.wait_for_selector(f"#view-{view}:not(.hidden)")
                 page.wait_for_timeout(300)

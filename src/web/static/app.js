@@ -80,20 +80,30 @@
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $("topbar").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
     route();
-    animateHero();
   }
 
   /* ---------- pages ---------- */
-  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/funnel": "dashboard", "#/how": "how", "#/explore": "explore" };
+  const VIEWS = { "": "dashboard", "#/": "dashboard", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore" };
   function route() {
+    const listRoute = /^#\/leads(?:\/([ABC]))?$/.exec(location.hash);
     const v = VIEWS[location.hash] || "dashboard";
     S.view = v;
-    for (const id of ["dashboard", "how", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
-    document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === v));
-    $("download").classList.toggle("off", v === "how");   // keeps its place: the header never shifts
+    for (const id of ["dashboard", "overview", "how", "explore"]) $("view-" + id).classList.toggle("hidden", id !== v);
+    document.querySelectorAll(".nav a").forEach((a) => {
+      a.classList.toggle("active", a.dataset.view === v);
+      if (a.dataset.view === v) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+    $("download").classList.toggle("off", v === "how" || v === "overview");   // keeps its place: the header never shifts
     closePanel();
-    window.scrollTo(0, 0);
-    if (v === "dashboard") animateHero();
+    if (listRoute) {
+      // Entry links open the full list. Ordinary tab changes keep the user's filters.
+      $("f-reset").click();
+      selectTab(listRoute[1] || S.tab);
+      $("lists").scrollIntoView({ behavior: REDUCED ? "instant" : "smooth", block: "start" });
+      $("lists").focus({ preventScroll: true });
+    } else window.scrollTo({ top: 0, behavior: "instant" });
+    if (v === "overview") animateHero();
   }
 
   function buildHow() {
@@ -136,35 +146,49 @@
   }
 
   function buildFunnel() {
-    const F = S.data.funnel || [];
+    const all = S.data.funnel || [], F = all.filter((f) => !f.list);
     const max = d3.max(F, (f) => f.count) || 1;
     const w = d3.scaleLog().domain([1, max]).range([0.03, 1]).clamp(true);
     $("funnel").replaceChildren(...F.map((f, i) => el("div", { class: "frow" },
       el("div", { class: "lab" }, el("span", { class: "cnt", text: fmtInt(f.count), "data-n": f.count }),
         el("span", { class: "t" }, f.list ? [el("span", { class: "dot " + f.list.toLowerCase() }), " "] : null, f.step)),
       el("div", { class: "barbox" }, el("div", { class: "fbar" + (f.list ? " " + f.list.toLowerCase() : ""),
-        style: "--w:" + w(Math.max(1, f.count)).toFixed(4) + ";--i:" + i, title: f.step + ": " + fmtInt(f.count) })),
+        style: "--w:" + (f.count > 0 ? w(f.count).toFixed(4) : "0") + ";--i:" + i, title: f.step + ": " + fmtInt(f.count) })),
       el("div", { class: "rule-t", text: f.rule }))));
+    $("list-entry").replaceChildren(...TABS.map((t) => {
+      const f = all.find((row) => row.list === t.key);
+      const count = t.key === "C" ? (S.data.list_c || []).length : S.data.items.filter((r) => r.lists.includes(t.key)).length;
+      const label = { A: "Live deals", B: "Pre-sale distress", C: "Repeat buyers" }[t.key];
+      return el("a", { class: "entry " + t.cls, href: "#/leads/" + t.key },
+        el("span", { class: "entry-title", text: "List " + t.key + ": " + label }),
+        el("span", { class: "entry-count", text: fmtInt(count) }),
+        el("span", { class: "entry-rule", text: f ? f.rule : label }),
+        el("span", { class: "entry-action", text: t.key === "C" ? "View buyers" : "View properties" }));
+    }));
   }
 
-  /* One orchestrated moment: the headline numbers count up and the funnel bars grow, once per visit to the page. */
+  /* Animate once when each group first becomes visible, including after entering on another route. */
   function countUp(node) {
     const n = Number(node.dataset.n);
     if (REDUCED || !isFinite(n) || n < 2) return;
     const suffix = node.dataset.suffix || "", t0 = performance.now(), dur = 900;
+    node.textContent = "0" + suffix;
     const tick = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
       node.textContent = fmtInt(Math.round(n * e)) + suffix; if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   }
   function animateHero() {
-    const f = $("funnel");
-    f.classList.remove("in");
-    document.querySelectorAll("#kpis [data-n]").forEach(countUp);
-    const go = () => { f.classList.add("in"); document.querySelectorAll("#funnel [data-n]").forEach(countUp); };
-    if (REDUCED || !("IntersectionObserver" in window)) return go();
-    if (S.io) S.io.disconnect();
-    S.io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { S.io.disconnect(); setTimeout(go, 60); } }, { threshold: 0.25 });
-    S.io.observe(f);
+    for (const id of ["kpis", "funnel"]) {
+      const group = $(id);
+      if (group.dataset.observed) continue;
+      group.dataset.observed = "true";
+      const go = () => { group.classList.add("in"); group.querySelectorAll("[data-n]").forEach(countUp); };
+      if (REDUCED || !("IntersectionObserver" in window)) { go(); continue; }
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) { observer.disconnect(); go(); }
+      }, { threshold: 0.1 });
+      observer.observe(group);
+    }
   }
 
   /* ---------- explore (watch list) ---------- */
@@ -293,12 +317,24 @@
   }
 
   /* ---------- tabs ---------- */
+  function selectTab(key) {
+    S.tab = key; S.page = 1; S.sort = { key: "rank", dir: 1 }; buildTabs(); render();
+  }
   function buildTabs() {
     const counts = { A: 0, B: 0, C: (S.data.list_c || []).length };
     for (const r of S.data.items) for (const l of r.lists) counts[l] = (counts[l] || 0) + 1;
     $("tabs").replaceChildren(...TABS.map((t) => el("button", {
       class: "tab " + t.cls, role: "tab", type: "button", "aria-selected": String(S.tab === t.key), "data-tab": t.key,
-      onclick: () => { S.tab = t.key; S.page = 1; S.sort = { key: "rank", dir: 1 }; buildTabs(); render(); },
+      tabindex: S.tab === t.key ? 0 : -1,
+      onclick: () => { selectTab(t.key); $("tabs").querySelector('[aria-selected="true"]').focus({ preventScroll: true }); },
+      onkeydown: (e) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        const i = TABS.findIndex((x) => x.key === t.key);
+        const next = e.key === "Home" ? 0 : e.key === "End" ? 2 : (i + (e.key === "ArrowRight" ? 1 : 2)) % 3;
+        selectTab(TABS[next].key);
+        $("tabs").querySelector('[aria-selected="true"]').focus({ preventScroll: true });
+      },
     }, el("span", { class: "dot " + t.cls }), t.label, el("span", { class: "count", text: fmtInt(counts[t.key] || 0) }))));
     for (const id of ["f-state", "f-care", "f-stage"]) $(id).classList.toggle("hidden", S.tab === "C");
     $("f-buyer").classList.toggle("hidden", S.tab !== "A");
@@ -419,9 +455,10 @@
     const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     S.page = Math.min(S.page, pages);
     const slice = rows.slice((S.page - 1) * PAGE_SIZE, S.page * PAGE_SIZE);
-    $("tbody").replaceChildren(...slice.map((r, i) => el("tr", isC ? { class: "row-in", style: "animation-delay:" + Math.min(i, 12) * 18 + "ms" } : {
-      class: "row-in", style: "animation-delay:" + Math.min(i, 12) * 18 + "ms",
-      tabindex: 0, onclick: () => openPanel(r), onkeydown: (e) => { if (e.key === "Enter") openPanel(r); },
+    $("tbody").replaceChildren(...slice.map((r) => el("tr", isC ? { class: "static" } : {
+      tabindex: 0, onclick: (e) => openPanel(r, e.currentTarget), onkeydown: (e) => {
+        if (e.key === "Enter" && e.target === e.currentTarget) { e.preventDefault(); openPanel(r, e.currentTarget); }
+      },
     }, cols.map((c) => (isC ? cCell(c, r) : cell(c, r))))));
     const total = isC ? (S.data.list_c || []).length : S.data.items.filter((r) => r.lists.includes(S.tab)).length;
     $("result-count").textContent = fmtInt(rows.length) + " of " + fmtInt(total) + (isC ? " buyers" : " leads") + (S.state && !isC ? " in " + (STATES[S.state] || S.state) : "");
@@ -440,7 +477,8 @@
   }
 
   /* ---------- detail panel ---------- */
-  function openPanel(r) {
+  function openPanel(r, trigger) {
+    S.panelTrigger = trigger || document.activeElement;
     const bd = r.breakdown || {};
     const tabKey = r.lists[0];
     $("p-kicker").replaceChildren(...r.lists.map((l) => el("span", { class: "dot " + l.toLowerCase() })),
@@ -507,17 +545,21 @@
       r.flags.filter((f) => f !== "buyer_possible_insider").map((f) => el("span", { class: "chip", text: pretty(f) })))));
 
     $("p-body").replaceChildren(...sections);
+    $("p-body").scrollTop = 0;
     $("panel").classList.remove("hidden"); $("scrim").classList.remove("hidden");
     $("panel").setAttribute("aria-hidden", "false");
+    document.body.classList.add("panel-open");
+    document.querySelectorAll(".view, .topbar, .skip-link").forEach((n) => { n.inert = true; });
     $("p-close").focus();
     void tabKey;
   }
   /* ---------- contact (business contact points only; each with its public source) ---------- */
   function copyButton(text) {
-    return el("button", { class: "copy", type: "button", text: "Copy", onclick: (e) => {
-      const b = e.currentTarget, done = () => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy"; }, 1400); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => {});
-      else done();
+    return el("button", { class: "copy", type: "button", text: "Copy", "aria-live": "polite", onclick: async (e) => {
+      const b = e.currentTarget;
+      try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; }
+      catch { b.textContent = "Select to copy"; }
+      setTimeout(() => { b.textContent = "Copy"; }, 2000);
     } });
   }
   function contactBlock(r) {
@@ -528,13 +570,13 @@
     const src = [c.phone_source, c.website_source].map(safeUrl).filter(Boolean);
     return el("div", { class: "contact" }, el("h3", { text: "Contact this property" }),
       el("div", { class: "contact-actions" },
-        act(tel ? "Call " + phoneText(tel) : "Call", tel ? "tel:+1" + tel : null, true),
+        act("Call", tel ? "tel:+1" + tel : null, true),
         act("Website", web, false), act("Map", mapsUrl(r), false)),
       el("dl", { class: "contact-rows" },
         ...[row("Phone", tel ? el("a", { class: "tel", href: "tel:+1" + tel, text: phoneText(tel) + (c.phone_label ? "  " + c.phone_label : "") }) : null, tel ? phoneText(tel) : null)]
           .map((x) => el("div", { class: "crow" }, x)),
         el("div", { class: "crow" }, row("Website", web ? el("a", { href: web, target: "_blank", rel: "noopener noreferrer", text: hostOf(web) }) : null, web)),
-        el("div", { class: "crow" }, row("Address", addr || r.city ? [c.street, r.city, [r.state, c.zip5].filter(Boolean).join(" ")].filter(Boolean).join(", ") : null, addr ? [r.property, addr, r.city, r.state].filter(Boolean).join(", ") : null))),
+        el("div", { class: "crow" }, row("Address", c.street ? [c.street, r.city, [r.state, c.zip5].filter(Boolean).join(" ")].filter(Boolean).join(", ") : null, c.street ? [r.property, addr, r.city, r.state].filter(Boolean).join(", ") : null))),
       el("p", { class: "contact-foot" }, src.length
         ? ["Source: ", ...src.flatMap((u, i) => [i ? ", " : "", el("a", { href: u, target: "_blank", rel: "noopener noreferrer", text: hostOf(u) })]),
            c.checked ? " (checked " + c.checked + ")" : ""]
@@ -542,11 +584,30 @@
   }
   function section(title, ...kids) { return el("div", { class: "section" }, el("h3", { text: title }), ...kids); }
   function closePanel() {
+    const wasOpen = !$("panel").classList.contains("hidden");
     $("panel").classList.add("hidden"); $("scrim").classList.add("hidden"); $("panel").setAttribute("aria-hidden", "true");
+    document.body.classList.remove("panel-open");
+    document.querySelectorAll(".view, .topbar, .skip-link").forEach((n) => { n.inert = false; });
+    if (wasOpen && S.panelTrigger && S.panelTrigger.isConnected) S.panelTrigger.focus({ preventScroll: true });
   }
   $("p-close").addEventListener("click", closePanel);
   $("scrim").addEventListener("click", closePanel);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("a[href]");
+    if (a && a.hash === location.hash && /^#\/leads(?:\/[ABC])?$/.test(a.hash)) {
+      e.preventDefault(); route();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("panel").classList.contains("hidden")) return;
+    if (e.key === "Escape") closePanel();
+    if (e.key === "Tab") {
+      const nodes = [...$("panel").querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]')];
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
 
   /* ---------- CSV of the current view ---------- */
   function csvCell(v) { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -580,8 +641,9 @@
     document.body.append(a); a.click(); a.remove();
   });
 
-  load().catch((e) => {
+  load().catch(() => {
     $("asof").textContent = "Could not load data";
-    $("kpis").replaceChildren(el("div", { class: "kpi" }, el("div", { class: "label", text: "Error" }), el("div", { class: "sub", text: String(e.message || e) })));
+    $("load-error").textContent = "The property data could not be loaded. Please refresh the page or contact your team.";
+    $("load-error").classList.remove("hidden");
   });
 })();

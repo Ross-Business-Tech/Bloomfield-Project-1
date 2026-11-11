@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+  <a class="skip-link" href="#/leads">Skip to property lists</a>
   <header class="topbar" id="topbar">
     <div class="topbar-in">
       <a class="brand" href="#/" aria-label="Deal Radar home">
@@ -21,6 +22,7 @@
       <span class="asof" id="asof">Loading…</span>
       <nav class="nav" aria-label="Pages">
         <a href="#/" data-view="dashboard">Dashboard</a>
+        <a href="#/overview" data-view="overview">Overview</a>
         <a href="#/how" data-view="how">How it works</a>
         <a href="#/explore" data-view="explore">Explore</a>
       </nav>
@@ -28,25 +30,49 @@
     </div>
   </header>
 
-  <main class="view" id="view-dashboard">
+  <div class="wrap load-error hidden" id="load-error" role="alert"></div>
+
+  <main class="view hidden" id="view-overview">
     <section class="hero" aria-labelledby="hero-title">
       <div class="wrap">
-        <p class="hero-kicker">Senior housing and skilled nursing</p>
-        <h1 id="hero-title">Distressed properties, ranked, sourced and ready to call.</h1>
-        <p class="hero-lede">Deal Radar reads public records and trade news, ties every fact to one building, and shows
-          the buildings most likely to trade. Each lead links to its sources and carries the property's contact details.</p>
+        <div class="hero-intro">
+          <div><p class="hero-kicker">Overview · Senior housing and skilled nursing</p>
+            <h1 id="hero-title">Your market at a glance.</h1></div>
+          <div class="hero-summary">
+            <p class="hero-lede">Review public distress signals, see who is buying, and contact the property.
+              Every lead links to its evidence.</p>
+            <div class="hero-actions">
+              <a class="btn primary" href="#/leads/A">View live deals</a>
+              <a class="btn outline" href="#/leads/B">View pre-sale distress</a>
+            </div>
+          </div>
+        </div>
         <section class="kpis" id="kpis" aria-label="Key numbers"></section>
+      </div>
+    </section>
+    <section class="screening" aria-labelledby="screening-title">
+      <div class="wrap">
         <div class="funnel-block" id="funnel-block">
           <div class="funnel-head">
-            <h2>From every building to a short list</h2>
-            <p>Each step applies one rule. Bars are to scale on a log axis so the small steps stay visible.</p>
+            <h2 id="screening-title">From public signals to your next conversation</h2>
+            <p>See how properties reach the main list, then choose where to start.</p>
           </div>
           <div id="funnel" class="funnel"></div>
+          <p class="funnel-note">Bar lengths use a log scale. The watch list is a separate group; these counts are not additive.</p>
+          <div class="list-entry" id="list-entry" aria-label="Open a property or buyer list"></div>
         </div>
       </div>
     </section>
 
+  </main>
+
+  <main class="view" id="view-dashboard">
     <div class="wrap page">
+      <div class="dashboard-head">
+        <div><h1>Property dashboard</h1>
+          <p class="muted">Explore public leads by location, review the evidence, and contact the property.</p></div>
+        <a class="btn" href="#/overview">View market overview</a>
+      </div>
       <section class="card map-card">
         <div class="card-head">
           <div>
@@ -62,7 +88,7 @@
         </div>
       </section>
 
-      <section class="card list-card" id="lists">
+      <section class="card list-card" id="lists" tabindex="-1" aria-label="Property and buyer lists">
         <div class="tabs" role="tablist" id="tabs"></div>
         <div class="filters" id="filters">
           <input type="search" id="f-search" placeholder="Search property, city, buyer" aria-label="Search">
@@ -147,7 +173,7 @@
   </main>
 
   <div class="scrim hidden" id="scrim"></div>
-  <aside class="panel hidden" id="panel" aria-label="Lead details" aria-hidden="true">
+  <aside class="panel hidden" id="panel" role="dialog" aria-modal="true" aria-labelledby="p-title" aria-hidden="true">
     <div class="panel-head">
       <div>
         <div class="panel-kicker" id="p-kicker"></div>

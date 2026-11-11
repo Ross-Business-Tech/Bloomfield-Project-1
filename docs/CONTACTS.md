@@ -23,3 +23,11 @@ with the public page it came from and the date it was checked. When nothing is k
 4. Make a new snapshot (`python -m src.web.snapshot`) and upload it as described in `DEPLOY_RENDER.md`.
 
 Re-running a load is safe. If the migration has not been applied yet the snapshot still builds (contacts show NOT FOUND).
+
+## Verified contact batch and handoff
+
+`config/contacts_manual.csv` contains 240 facility phones and 16 official websites, each with a public source.
+See [CONTACT_RESEARCH.md](CONTACT_RESEARCH.md) for coverage and matching limits, [contact_sources.csv](contact_sources.csv)
+for the row-by-row review ledger, and [HANDOFF.md](../HANDOFF.md) for database checks and Render refresh steps.
+The dry-run validates formatting only; it does not check database identities. The source-backed candidates in
+`contacts_needs_review.csv` are not ready to import.
