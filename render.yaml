@@ -4,7 +4,7 @@
 services:
   # Password-protected website showing a STATIC SNAPSHOT of the public lead list. No database or key at runtime.
   - type: web
-    name: bloomfield-leads
+    name: deal-radar
     runtime: python
     plan: free                      # spins down after 15 min idle; 750 free instance hours / month per workspace
     branch: development
@@ -23,7 +23,7 @@ services:
   # Daily pipeline run: NOT ENABLED (decision Nov 10, 2026: no paid items; Render cron jobs cost at least $1 / month
   # each, render.com/docs/cronjobs). Left as a reference:
   # - type: cron
-  #   name: bloomfield-daily-pipeline
+  #   name: deal-radar-daily-pipeline
   #   runtime: python
   #   plan: starter
   #   branch: development
