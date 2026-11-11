@@ -211,6 +211,10 @@ class BuyerResolver:
 
     def platform_size(self, org_id: str | None, chain: dict | None, *names) -> int:
         n = len(self.org_facs.get(org_id, ())) if org_id else 0
+        for nm in names:                    # config/buyer_orgs.yaml `facilities` (a public source states the size)
+            k = self.known.get(normalize_name(nm)) if nm else None
+            if k and k.get("facilities"):
+                n = max(n, int(k["facilities"]))
         if chain and chain.get("num_facilities"):
             n = max(n, int(chain["num_facilities"]))
         for nm in names:

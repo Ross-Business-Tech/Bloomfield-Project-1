@@ -72,6 +72,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     dated = [s.event_date for s in current if s.event_date]
     latest = max(dated) if dated else None
     size_pts, size_known = rules.size_fit_points(fac.get("units"), fac.get("beds"))
+    ctf = rules.cfg()["scoring"].get("care_type_fit") or {}
+    care_pts = float(ctf.get("points", 0)) if set(fac.get("care_types") or []) & set(ctf.get("types") or []) else 0.0
     mega = buyer.status != "NOT FOUND" and buyer.mega_platform
     if mega:
         size_pts = 0.0      # a buyer with 100+ homes borrows at platform level, not per building (assumption)
@@ -110,6 +112,7 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         "buyer": buyer_pts,
         "buyer_chain_quality": chain_pts,
         "size_fit": size_pts,
+        "care_type_fit": care_pts,
         "hud_exit": hud_pts,
         "market_sale": market_pts,
         "closed_sale_penalty": closed_pts,
