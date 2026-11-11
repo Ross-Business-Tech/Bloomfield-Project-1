@@ -147,6 +147,10 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("buyer_chain_perf_missing")
     if hospital_buyer:
         flags.append("buyer_hospital_district")
+    if buyer.status != "NOT FOUND" and buyer.possible_insider:
+        flags.append("buyer_possible_insider")    # same brand as the debtor (inferred)
+    if buyer.dropped_debtor:
+        breakdown["buyer_dropped_debtor"] = buyer.dropped_debtor   # named the debtor / its affiliate: never a buyer
     # Wave 3.5 deliverable rule: licensed (private) facts never reach Bloomfield-facing output.
     #   licensed_only    = no distress signal from a public source -> excluded from app.v_lead_list
     #   licensed_private = some licensed content -> public view masks it (public distress types, buyer NOT FOUND
@@ -173,6 +177,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("event_date_unknown")
     if not fac.get("city") or not fac.get("state"):
         flags.append("location_incomplete")
+    if fac.get("state_source") == "inferred":
+        flags.append("state_inferred")         # state deduced from the city / portfolio, not stated by the source
     for f in ("senior_housing_maybe", "portfolio_link"):
         if f in best.flags:
             flags.append(f)
@@ -243,12 +249,18 @@ def _licensed(url) -> bool:
 
 
 def attach_public(ranked: list[Lead], facs: dict, sigs_by_fac: dict, hints_by_fac: dict, buyers: dict, resolver,
-                  today: date) -> int:
+                  today: date, pub_facs: dict | None = None) -> int:
     """Deliverable rule (Nov 10, 2026): the Bloomfield-facing list shows what the PUBLIC sources alone give. For every
     lead with licensed content, the whole list is scored again without licensed signals / buyers (same family caps and
     top-N rules), and the public score, tier, buyer and distress types are stored in score_breakdown['public'].
     A lead whose public twin is missing or not on the main list is 'licensed_only'."""
+    for l in ranked:                      # a licensed size alone is licensed content too
+        if facs[l.facility_id].get("size_licensed"):
+            l.breakdown["size_licensed"] = True
+            if "licensed_private" not in l.flags:
+                l.flags.append("licensed_private")
     affected = {l.facility_id for l in ranked if "licensed_private" in l.flags}
+    facs = pub_facs or facs               # the public twin never sees licensed sizes
     if not affected:
         return 0
     pub_sigs = {fid: [s for s in sigs if not _licensed(s.source_url)] for fid, sigs in sigs_by_fac.items()}
@@ -276,6 +288,32 @@ def attach_public(ranked: list[Lead], facs: dict, sigs_by_fac: dict, hints_by_fa
                                  "buyer": b.name if found else "NOT FOUND", "buyer_status": b.status,
                                  "buyer_source_url": b.source_url if found else None, "buyer_chain": b.chain}
     return len(affected)
+
+
+def keep_name_only_out_of_public_top(leads: list) -> int:
+    """Gate 3 court-only rule on the Bloomfield-facing ranking: the public list hides licensed-only leads and shows
+    public twin scores, so a name-only court lead can climb into the public top N even when it is capped internally.
+    Its public score is lowered to just under the N-th confirmed public lead. Returns the number capped."""
+    n = int(rules.court_name_only_cfg()["keep_out_of_top"])
+
+    def pub_score(l):
+        p = l.breakdown.get("public") if "licensed_private" in l.flags else None
+        return float(p["score"]) if p else float(l.score)
+    visible = [l for l in leads if l.tier == "main" and "licensed_only" not in l.flags]
+    ok = sorted((pub_score(l) for l in visible if "court_name_only" not in l.flags), reverse=True)
+    if len(ok) < n:
+        return 0
+    floor, capped = round(ok[n - 1] - 0.01, 2), 0
+    for l in visible:
+        if "court_name_only" in l.flags and pub_score(l) > floor:
+            capped += 1
+            if "licensed_private" in l.flags and l.breakdown.get("public"):
+                l.breakdown["public"]["score"] = floor
+            else:
+                l.breakdown["court_name_only_cap"] = (l.breakdown.get("court_name_only_cap", "") +
+                                                      f"; kept out of the public top {n} ({l.score:g} -> {floor:g})").lstrip("; ")
+                l.score = l.breakdown["total"] = floor
+    return capped
 
 
 def _keep_name_only_out_of_top(leads) -> None:
@@ -323,6 +361,7 @@ def lead_row(l: Lead, fac: dict, urls: list[str]) -> dict:
     found = b.status != "NOT FOUND"
     return {"lead_id": None, "property": fac["canonical_name"], "city": fac["city"], "state": fac["state"],
             "care_types": fac.get("care_types") or [], "units": fac["units"], "beds": fac["beds"],
+            "size_licensed": bool(fac.get("size_licensed")),
             "distress_type": l.distress_type, "stage": l.stage, "buyer": b.name if found else "NOT FOUND",
             "buyer_status": b.status, "score": l.score, "score_breakdown": lead_breakdown(l), "flags": l.flags,
             "source_urls": sorted(set(urls)), "facility_id": l.facility_id, "ccn": fac.get("ccn"),

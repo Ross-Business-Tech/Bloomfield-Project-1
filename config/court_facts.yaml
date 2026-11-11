@@ -1,6 +1,16 @@
 # Hand-checked court facts (Gate 3 top-5 check, Nov 10, 2026). Read by src/score/signals.py.
 # Every entry needs a public source_url. Public court / CMS facts only; nothing confidential goes here.
 #
+# cases: public bankruptcy filings our court sources missed (loaded by `python -m src.discover.courts --source court_manual`).
+#   court (CourtListener court id), docket_no, debtor_name, chapter, filed_date, source_url (a public docket listing)
+cases:
+  - court: "nhb"
+    docket_no: "1:26-bk-10275"
+    debtor_name: "Granite Senior Services, LLC"
+    chapter: 11
+    filed_date: 2026-03-30
+    source_url: https://www.inforuptcy.com/browse-filings/new-hampshire-bankruptcy-court/1:26-bk-10275/bankruptcy-case-granite-senior-services-llc
+
 # links: extra bankruptcy case -> facility links, confirmed by an address or CCN source.
 #   case:          court:docket as in core.legal_case (e.g. pawb:26-22481)
 #   ccn:           the facility's CMS CCN
@@ -45,7 +55,117 @@ buyers:
     evidence_text: "Judge approved Focus Healthcare Partners' bid through Focus SH Acquisitions LLC: $116.4M cash, $133M total gross consideration, 495-unit CCRC (Levin Associates, Jan 30, 2026)."
     source_url: https://seniorcare.levinassociates.com/2026/01/30/focus-healthcare-partners-acquires-bankrupt-ccrc/
 
-# facilities: buildings no loader has (no CMS number), tied to a bankruptcy case by a hand check.
+  # Inspired Healthcare Capital (N.D. Tex. 26-90004): stalking-horse bidders designated before the Jul 29, 2026 auction
+  # (AltsWire, Jul 23, 2026). The court approved the final sales in Oct 2026 (29 communities, 10 buyers), but no public
+  # source we can read names the final buyer per home, so these stay candidates (stalking horse = candidate).
+  - case: "txnb:26-90004"
+    home: "Azalea at Delray Beach"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra Senior Living Dunedin"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra Senior Living Fort Myers"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra Senior Living Melbourne"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra Senior Living Largo"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra Senior Living Pinellas Park"
+    name: "Inspired Florida Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $81M for the six-community Florida portfolio (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Teal Shores"
+    name: "AG2 Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $34.5M for Teal Shores and Ballard Glenn (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Ballard Glenn"
+    name: "AG2 Acquisitions LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $34.5M for Teal Shores and Ballard Glenn (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Mariella of Reno"
+    name: "AREP HC Fund III Investments LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $67.5M for Mariella of Reno, Thrive at Augusta and adjacent vacant land (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Thrive at Augusta"
+    name: "AREP HC Fund III Investments LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $67.5M for Mariella of Reno, Thrive at Augusta and adjacent vacant land (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Salterra at Las Vegas"
+    name: "Sonida Acquisition LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $73.4M for Salterra at Las Vegas, The Archer at Crescent Park and Mariella of Grapevine (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Mariella of Grapevine"
+    name: "Sonida Acquisition LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $73.4M for Salterra at Las Vegas, The Archer at Crescent Park and Mariella of Grapevine (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Orchard at Brookhaven"
+    name: "PO Holdco LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $67.5M for Orchard at Brookhaven, Orchard at Athens and Mariella of Arlington Heights (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Orchard at Athens"
+    name: "PO Holdco LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $67.5M for Orchard at Brookhaven, Orchard at Athens and Mariella of Arlington Heights (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    home: "Mariella of Arlington Heights"
+    name: "PO Holdco LLC"
+    status: candidate
+    event_date: 2026-07-21
+    evidence_text: "Stalking-horse bidder designated by the debtors: $67.5M for Orchard at Brookhaven, Orchard at Athens and Mariella of Arlington Heights (AltsWire, Jul 23, 2026)."
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+
+# facilities: buildings no loader has (state_source: inferred = the state is deduced from the city / portfolio, not
+#   stated by the source) (no CMS number), tied to a bankruptcy case by a hand check.
 #   Created by `python -m src.enrich --step manual`; only facts the source states. Check CMS by address first:
 #   The Buckingham turned out to be in CMS already (CCN 676111), so it is not listed here.
 #   An existing building with the same name, city and state is reused (no duplicate).
@@ -59,6 +179,121 @@ facilities:
     care_types: [IL, AL, MC]
     source_id: courtlistener
     source_url: https://bondoro.com/alura-senior-living-filing-alert/
+  # Granite Senior Services, LLC (D.N.H. 1:26-bk-10275, Ch. 11 filed Mar 30, 2026) does business as Artemis Living at
+  # Littleton (Bondoro filing alert). Units: 22 IL cottages + 6 IL apartments + 47 supported-living apartments +
+  # 20 memory-care suites = 95 (Littleton Area Chamber of Commerce profile).
+  - case: "nhb:26-10275"
+    name: "Artemis Living at Littleton"
+    city: "Littleton"
+    state: "NH"
+    units: 95
+    care_types: [IL, AL, MC]
+    source_id: court_manual
+    source_url: https://bondoro.com/artemis-living-filing-alert/
+
+  # Inspired Healthcare Capital Holdings, LLC et al. (N.D. Tex. 26-90004, Ch. 11 filed Feb 2, 2026): communities named in
+  # the debtors' stalking-horse notices, as reported by AltsWire (Jul 23, 2026). States as the article gives them;
+  # inferred from the city for Reno / Las Vegas (NV), Augusta / Athens / Brookhaven (GA), Grapevine (TX) and the five
+  # Florida Salterra locations (the article names the Florida portfolio). Wisconsin homes: no city in the source.
+  - case: "txnb:26-90004"
+    name: "Azalea at Delray Beach"
+    city: "Delray Beach"
+    state: "FL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Dunedin"
+    city: "Dunedin"
+    state: "FL"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Fort Myers"
+    city: "Fort Myers"
+    state: "FL"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Melbourne"
+    city: "Melbourne"
+    state: "FL"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Largo"
+    city: "Largo"
+    state: "FL"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra Senior Living Pinellas Park"
+    city: "Pinellas Park"
+    state: "FL"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Teal Shores"
+    state: "WI"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Ballard Glenn"
+    state: "WI"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Reno"
+    city: "Reno"
+    state: "NV"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Thrive at Augusta"
+    city: "Augusta"
+    state: "GA"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Salterra at Las Vegas"
+    city: "Las Vegas"
+    state: "NV"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Grapevine"
+    city: "Grapevine"
+    state: "TX"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Orchard at Brookhaven"
+    city: "Brookhaven"
+    state: "GA"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Orchard at Athens"
+    city: "Athens"
+    state: "GA"
+    state_source: inferred
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
+  - case: "txnb:26-90004"
+    name: "Mariella of Arlington Heights"
+    city: "Arlington Heights"
+    state: "IL"
+    source_id: court_manual
+    source_url: https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
 
 # excluded_sale_evidence: machine-found sale evidence that belongs to a different case.
 excluded_sale_evidence:

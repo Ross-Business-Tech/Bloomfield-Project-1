@@ -1,0 +1,43 @@
+# Render Blueprint (PREP ONLY: nothing is deployed from this repo by Claude). See docs/DEPLOY_RENDER.md.
+# Secrets are never in this file: `sync: false` values are typed into the Render dashboard, and the data snapshot is
+# uploaded as a Secret File (it is never committed).
+services:
+  # Password-protected website showing a STATIC SNAPSHOT of the public lead list. No database or key at runtime.
+  - type: web
+    name: deal-radar
+    runtime: python
+    plan: free                      # spins down after 15 min idle; 750 free instance hours / month per workspace
+    branch: development
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: python -m src.web.server
+    healthCheckPath: /healthz
+    autoDeploy: false               # deploy by hand after review
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: SITE_PASSWORD          # basic-auth password for every page (8+ characters)
+        sync: false
+      - key: SNAPSHOT_PATH          # Secret File path (Render mounts secret files under /etc/secrets/)
+        value: /etc/secrets/site_snapshot.json
+
+  # Daily pipeline run: NOT ENABLED (decision Nov 10, 2026: no paid items; Render cron jobs cost at least $1 / month
+  # each, render.com/docs/cronjobs). Left as a reference:
+  # - type: cron
+  #   name: deal-radar-daily-pipeline
+  #   runtime: python
+  #   plan: starter
+  #   branch: development
+  #   schedule: "0 9 * * *"
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: python -m src.pipeline_daily     # entry point not written yet
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: "3.11.9"
+  #     - key: SUPABASE_DB_URL
+  #       sync: false
+  #     - key: SUPABASE_SERVICE_ROLE_KEY
+  #       sync: false
+  #     - key: ANTHROPIC_API_KEY
+  #       sync: false
+  #     - key: COURTLISTENER_TOKEN
+  #       sync: false

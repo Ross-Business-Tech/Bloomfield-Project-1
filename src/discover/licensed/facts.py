@@ -168,7 +168,7 @@ def build_rows(conn, path, label, dry_run):
                 method = "unclear"
             if not fid and method == "none" and city and state and not dry_run:
                 fid = new_facility(batch, idx, name=prop, city=city, state=state,
-                                   care_types=care_types(r.get("care_type")), units=first_int(r.get("units_beds")))
+                                   care_types=care_types(r.get("care_type")))   # size: private table only
                 batch.xrefs.append([fid, "licensed_data", f"fact:{normalize_name(debtor or prop)}:{normalize_name(prop)}",
                                     "manual", None, "auto"])
                 method = "new"

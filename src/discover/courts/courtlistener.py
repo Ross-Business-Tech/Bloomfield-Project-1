@@ -9,7 +9,7 @@ import re
 from urllib.parse import urljoin
 
 from src.common.config import MissingSetting, env
-from src.common.http import PoliteClient
+from src.common.http import PoliteClient, RateLimited
 
 from .base import (SALE_TEXT, WINDOW_MONTHS, CaseRecord, DocRecord, SourceResult,
                    has_buyer_evidence, months_ago, parse_date, to_datetime)
@@ -124,7 +124,7 @@ def fetch_courtlistener(client, limit=None, *, today=None, search_only=False, on
     seen: dict[str, CaseRecord] = {}
     try:
         _fetch(client, res, limit, today, seen, search_only, on_cases, queries)
-    except RequestCapReached as exc:
+    except (RequestCapReached, RateLimited) as exc:      # whatever was found before the stop is kept
         res.note = f"stopped early: {exc}"
     res.cases = list(seen.values())
     res.note = (res.note + "; " if res.note else "") + f"requests={getattr(client, 'requests_made', '?')}"
