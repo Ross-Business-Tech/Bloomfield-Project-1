@@ -49,6 +49,20 @@
 7. **Refresh the data:** rerun step 1, replace the Secret File contents (step 4) and redeploy. The page shows the
    snapshot time.
 
+## Healthy logs and troubleshooting
+A healthy start shows, in *Logs*:
+```
+snapshot loaded: /etc/secrets/site_snapshot.b64 (313,292 bytes), generated 2026-11-11T..., 533 leads, explore 7225
+Deal Radar listening on 0.0.0.0:10000
+GET /healthz
+```
+then one `GET /healthz` line every few seconds (Render's health check) and `GET /` lines when people visit.
+- `ERROR: SITE_PASSWORD must be set ...` → add `SITE_PASSWORD` (8+ characters) under *Environment*, then redeploy.
+- `ERROR: snapshot file not found ...` → upload the Secret File `site_snapshot.b64`, check `SNAPSHOT_PATH`, redeploy.
+- With either error the site still starts (so it never hangs on "Application loading") but every page says
+  "Deal Radar is not configured yet" and shows no data.
+- "Application loading" for up to a minute after 15 idle minutes is normal on the Free plan (spin-up).
+
 ## Never
 - Never commit the snapshot or put it anywhere public; never paste it into an issue or pull request.
 - Never give the website a database URL, the service-role key or the Anthropic key: it needs none.
