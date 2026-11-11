@@ -45,6 +45,7 @@ class Buyer:
     own_operator: list[str] = field(default_factory=list)     # hints dropped: the home's own current operator / licensee
     facilities: int | None = None      # homes the buyer (or its parent) runs: CMS roles / chain size, whichever is larger
     mega_platform: bool = False        # facilities > scoring.buyer_mega_platform_facilities
+    facilities_basis: str | None = None   # 'cms' (roles / chain size), 'source' or 'inferred' (config, with links)
 
 
 def pick(hints: list[BuyerHint]) -> BuyerHint | None:
@@ -205,16 +206,25 @@ class BuyerResolver:
         n, fn = normalize_name(name), normalize_name(facility_name) if facility_name else ""
         if fn and len(fn) >= 8 and fn in n:
             return True
-        org_id, _ = self.org_for(name, None)
+        org_id, chain_id = self.org_for(name, None)
         ops = self.fac_ops.get(facility_id, set())
-        return bool(org_id and org_id in ops and (facility_id, org_id) not in self.transferred_to)
+        if org_id and org_id in ops and (facility_id, org_id) not in self.transferred_to:
+            return True
+        # Nov 11 (2): the home's own single-facility operating LLC set up at a change of ownership ('Flint OpCo LLC'
+        # for one Flint home) says only that the operator changed, not who bought. Without a CMS chain behind it,
+        # it is not a buyer (with a chain, resolve() shows the chain as the parent instead).
+        return bool(org_id and org_id in ops and self.single_home_opco(org_id) and not self.chains.get(chain_id))
+
+    def single_home_opco(self, org_id: str | None) -> bool:
+        return bool(org_id) and len(self.org_facs.get(org_id, ())) == 1
 
     def platform_size(self, org_id: str | None, chain: dict | None, *names) -> int:
         n = len(self.org_facs.get(org_id, ())) if org_id else 0
+        self._size_basis = "cms"
         for nm in names:                    # config/buyer_orgs.yaml `facilities` (a public source states the size)
             k = self.known.get(normalize_name(nm)) if nm else None
-            if k and k.get("facilities"):
-                n = max(n, int(k["facilities"]))
+            if k and k.get("facilities") and int(k["facilities"]) > n:
+                n, self._size_basis = int(k["facilities"]), k.get("facilities_basis") or "source"
         if chain and chain.get("num_facilities"):
             n = max(n, int(chain["num_facilities"]))
         for nm in names:
@@ -249,6 +259,10 @@ class BuyerResolver:
         known = self.known.get(normalize_name(first))
         if not b.parent and known and known.get("parent"):
             b.parent, b.parent_basis = known["parent"], "source"
+        # the home's own single-facility operating LLC with a CMS chain: the chain (CMS affiliated entity) is the buyer's parent
+        if not b.parent and org_id and org_id in self.fac_ops.get(facility_id, set()) and self.single_home_opco(org_id) \
+                and chain and chain.get("chain_name"):
+            b.parent, b.parent_basis = chain["chain_name"], "cms_chain"
         # Gate 3: an OpCo / PropCo or facility-named LLC is a shell; show the CMS owner behind it, else 'shell'
         if b.status == "named" and not b.parent and rules.is_shell_buyer(first, facility_name):
             parent = self.cms_parent(facility_id, first)
@@ -280,5 +294,6 @@ class BuyerResolver:
                 rules.months_between(b.event_date, today) > rules.cfg()["scoring"].get("buyer_named_max_months", 24):
             b.status = "stale"
         b.facilities = self.platform_size(org_id, b.chain, b.parent, first)
+        b.facilities_basis = self._size_basis
         b.mega_platform = b.facilities > int(rules.cfg()["scoring"].get("buyer_mega_platform_facilities", 100))
         return b

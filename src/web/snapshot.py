@@ -42,6 +42,8 @@ def buyer_group(r: dict) -> str:
     """Website filter group: confirmed (named in a source), candidate (stalking horse / proposed), inferred (parent
     matched by brand, or a shell / stale buyer), none (NOT FOUND)."""
     st, bd = r.get("buyer_status"), r.get("breakdown") or {}
+    if "(unnamed)" in (r.get("buyer") or "").lower():          # a placeholder, never a named buyer
+        return "candidate" if st in ("candidate", "named") else "inferred"
     if st == "named" and bd.get("buyer_parent_basis") != "brand_match":
         return "confirmed"
     if st == "candidate":

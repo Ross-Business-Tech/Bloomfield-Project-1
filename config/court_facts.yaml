@@ -35,14 +35,14 @@ links:
 sales:
   # Rochester Manor OpCo et al. (W.D. Pa. 26-22481): the sale motion was withdrawn and bidding procedures vacated
   # (Dkt. 251); on Nov 5, 2026 the court entered a Settlement and Transfer Order (Dkt. 291): $790,000 settlement and
-  # operations transfer to Focus Health Network-connected operators, closing milestone Nov 13 (Dkt. 258).
+  # operations transfer to Focus-affiliated operators (ElevenFlo's wording), closing milestone Nov 13 (Dkt. 258).
   # The four stalking-horse entities are dropped (sale withdrawn; facility mapping was guessed from names).
   - case: "pawb:26-22481"
     stage_text: sale order
     event_date: 2026-11-05
-    evidence_text: "Nov 5, 2026 Settlement and Transfer Order (Dkt. 291): $790,000 settlement and operations transfer to Focus Health Network-connected operators (unnamed); sale motion withdrawn (Dkt. 251). Source: ElevenFlo docket summary, not verified against the order."
+    evidence_text: "Nov 5, 2026 Settlement and Transfer Order (Dkt. 291): $790,000 settlement and transfer of operations to Focus-affiliated operators (unnamed); sale motion withdrawn (Dkt. 251). Source: ElevenFlo docket summary, not verified against the order."
     source_url: https://elevenflo.com/cases/rochester-manor-opco-llc-19234
-    buyer_all_homes: "Focus Health Network-connected operators (unnamed)"
+    buyer_all_homes: "Focus-affiliated operators (unnamed)"
     buyer_status: candidate          # transferees are not named in anything we could read
 
 # buyers: hand-checked buyer for one facility (by CCN, or by `case` for a hand-entered facility below).

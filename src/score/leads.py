@@ -92,6 +92,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         # Gate 3: full buyer points for operators and PE/investors, low for public companies / REITs, 0 for lenders
         tw = rules.buyer_type_weight(buyer.buyer_type)
         buyer_pts, chain_pts, hud_pts = (round(x * tw, 2) for x in (buyer_pts, chain_pts, hud_pts))
+    if mega:
+        buyer_pts = 0.0     # Nov 11 (2): a mega-platform buyer earns no buyer-named bonus (lead stays listed, flag kept)
     # Gate 3: a sale that closed more than N months ago is old news for a lender (large penalty)
     pen = rules.cfg()["scoring"].get("closed_sale_penalty") or {"after_months": 12, "points": 60}
     closed_age = rules.months_between(buyer.event_date, today) if (
@@ -158,6 +160,7 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     if mega:
         flags.append("buyer_mega_platform")
         breakdown["buyer_facilities"] = buyer.facilities
+        breakdown["buyer_facilities_basis"] = buyer.facilities_basis
     if buyer.own_operator:
         flags.append("buyer_is_own_operator")
         breakdown["buyer_dropped_own_operator"] = buyer.own_operator   # the home's own operator: not a buyer
