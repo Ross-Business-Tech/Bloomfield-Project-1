@@ -39,6 +39,28 @@ def private_terms() -> tuple[list[str], list[str]]:
     return leak_guard.load_private_terms()
 
 
+PLACE_FIELDS = ("property", "city", "buyer")
+
+
+def mask_place_names(snap: dict) -> dict:
+    """Copy of the upload where, in each home's own row (main list and Explore), that row's CITY is blanked out of its
+    property / city / buyer fields. A town that happens to share a private word (e.g. a town named like the client)
+    is public CMS / state-roster data; any other occurrence still fails the check (decision Nov 11, 2026)."""
+    import copy
+    import re
+    out = copy.deepcopy(snap)
+    for key in ("items", "explore"):
+        for r in out.get(key) or []:
+            city = (r.get("city") or "").strip() if isinstance(r, dict) else ""
+            if len(city) < 3 or city.upper() == "NOT FOUND":
+                continue
+            rx = re.compile(re.escape(city), re.I)
+            for f in PLACE_FIELDS:
+                if isinstance(r.get(f), str):
+                    r[f] = rx.sub("", r[f])
+    return out
+
+
 def leak_check(text: str) -> list[str]:
     """Problems found in the upload, described without repeating any private term."""
     low = text.lower()
@@ -97,7 +119,10 @@ def main(argv=None) -> int:
     items = snap.get("items") or []
     print(f"contacts: phone {sum(1 for r in items if (r.get('contact') or {}).get('phone'))}, "
           f"website {sum(1 for r in items if (r.get('contact') or {}).get('website'))} of {len(items)} leads")
-    problems = leak_check(json.dumps(snap, ensure_ascii=False, default=str))
+    raw_hits = leak_check(json.dumps(snap, ensure_ascii=False, default=str))
+    problems = leak_check(json.dumps(mask_place_names(snap), ensure_ascii=False, default=str))
+    if raw_hits and not problems:
+        print("note: hits only in home city names (public place names, allowed):", "; ".join(raw_hits))
     if size > MAX_BYTES:
         problems.append(f"upload too large ({size:,} > {MAX_BYTES:,} bytes)")
     print("leak / size check:", "clean" if not problems else "FAILED: " + "; ".join(problems))
