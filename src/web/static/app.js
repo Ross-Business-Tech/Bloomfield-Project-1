@@ -16,12 +16,20 @@
   const CODE_BY_NAME = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
   const SENIOR_TYPES = ["AL", "IL", "MC", "CCRC"];
   const CARE_TYPES = ["SNF", "AL", "IL", "MC", "CCRC"];
-  const STAGES = ["early", "middle", "late", "sale"];
-  const STAGE_LABEL = { early: "Early distress", middle: "Deepening", late: "Late stage", sale: "In a sale" };
+  const STAGES = ["early", "middle", "late", "sale", "done"];
+  const STAGE_LABEL = { early: "Early distress", middle: "Deepening", late: "Late stage", sale: "In a sale", done: "Sale approved / closed" };
+  // "Sale approved · Oct 13, 2026" / "Closed / sold · May 1, 2026" (the date comes from the public source; never guessed)
+  function stageText(r) {
+    const s = r.sale_status;
+    if (!s) return STAGE_LABEL[r.stage] || "";
+    return (s.status === "closed" ? "Closed / sold" : "Sale approved") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
+      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date)) + (s.portfolio ? " (portfolio sale)" : "");
+  }
   const STAGE_TIP = { early: "Early distress: warning signs such as losses or low occupancy, with no legal action yet.",
     middle: "Deepening: several signals at once, or a regulator or lender has stepped in.",
     late: "Late stage: a court, receiver or lender now controls what happens to the property.",
-    sale: "In a sale: the property is being sold, usually through a court process, or a sale was recently reported." };
+    sale: "In a sale: the property is being sold, usually through a court process, or a sale was recently reported.",
+    done: "Sale approved: a court order approved the sale, closing not confirmed. Closed / sold: a public source reports the sale closed. The date is the order or closing date in that source." };
   const BUYER_LABEL = { confirmed: "Named", candidate: "Candidate · not final", inferred: "Unverified", none: "NOT FOUND" };
   const BUYER_TIP = { confirmed: "Named: a public source states this buyer.",
     candidate: "Candidate: a proposed or stalking-horse bidder. Not final; another bidder may win.",
@@ -68,7 +76,13 @@
     ["Special Focus Facility", "Medicare's list of nursing homes with a history of serious quality problems."],
     ["List A / List B / List C", "A: live deals with a buyer named in a source. B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
   ];
-  const FLAG_TEXT = { buyer_chain_perf_missing: "no public quality record for the buyer's other properties",
+  const FLAG_TEXT = { sale_approved: "a court order approved the sale", sale_closed: "a public source reports the sale closed",
+    closing_unverified: "closing not verified in a public source",
+    portfolio_sale_inferred: "the sale stage comes from a portfolio-wide sale; this home is not named in the source", sale_date_is_report_date: "the sale date is the date of the report",
+    debtor_link_unverified: "the link between this building and the bankrupt company is not verified, so the bankruptcy is not scored",
+    buyer_operating_transferee: "the named party took over operations; the real-estate buyer is not verified",
+    buyer_court_approved_purchaser: "the buyer is the purchaser approved by the court",
+    buyer_chain_perf_missing: "no public quality record for the buyer's other properties",
     family_capped: "part of a large bankruptcy that is counted as one deal", unconfirmed: "the match to this building is not yet confirmed",
     court_name_only: "the court case was matched by name only", buyer_stale: "the buyer's name is more than two years old",
     portfolio_link: "linked to a portfolio sale", senior_housing_maybe: "the care type is uncertain",
@@ -160,7 +174,7 @@
     if (i < 0) return nf();
     return el("span", { class: "stage", "data-tip": STAGE_TIP[r.stage] },
       el("span", { class: "pips", "aria-hidden": "true" }, STAGES.map((_, k) => el("i", { class: k <= i ? "on" : "" }))),
-      el("span", { text: STAGE_LABEL[r.stage] }));
+      el("span", { text: stageText(r) }));
   }
   function buyerChip(group) {
     if (group === "none") return el("span", { class: "nf", text: "NOT FOUND", "data-tip": BUYER_TIP.none });
@@ -331,7 +345,8 @@
     if (!m) return "";
     const o = m.other_breakdown || {};
     const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
-      [o.sale_no_public_buyer, "sales under way with no public buyer"], [o.shell_or_closed, "shell or closed"]]
+      [o.sale_no_public_buyer, "sales under way with no public buyer"],
+      [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"], [o.shell_or_closed, "shell or closed"]]
       .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
     return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
       " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +
@@ -481,7 +496,9 @@
     const bd = r.breakdown || {};
     return bd.buyer_parent ? "parent: " + bd.buyer_parent + (bd.buyer_parent_basis ? ", " + basisText(bd.buyer_parent_basis) : "") : null;
   }
-  const buyerNotes = (r) => [parentNote(r), megaNote(r)].filter(Boolean).map((t) => "(" + t + ")").join(" ");
+  const roleNote = (r) => r.flags.includes("buyer_operating_transferee") ? "operating transferee; real-estate buyer not verified"
+    : r.flags.includes("buyer_court_approved_purchaser") ? "court-approved purchaser; closing not verified" : null;
+  const buyerNotes = (r) => [parentNote(r), megaNote(r), roleNote(r)].filter(Boolean).map((t) => "(" + t + ")").join(" ");
   const buyerNameEl = (r, cls) => el("span", { class: cls || "bname", title: r.buyer }, r.buyer, buyerNotes(r) ? el("span", { class: "bnote", text: " " + buyerNotes(r) }) : null);
   const careMatch = (r, care) => !care || (care === "senior" ? r.care_types.some((t) => SENIOR_TYPES.includes(t)) : r.care_types.includes(care));
   function filtered() {
@@ -653,7 +670,7 @@
   function leadLink(r, ctx) {
     return el("button", { class: "leadlink", type: "button", onclick: (e) => openPanel(r, e.currentTarget, ctx) },
       el("span", { class: "rk", text: String(r.rank) }), el("span", { class: "nm", text: r.property || "" }),
-      el("span", { class: "pl", text: [cityName(r.city), r.state].filter(Boolean).join(", ") }), el("span", { class: "st", text: STAGE_LABEL[r.stage] || "" }));
+      el("span", { class: "pl", text: [cityName(r.city), r.state].filter(Boolean).join(", ") }), el("span", { class: "st", text: stageText(r) }));
   }
   function buyerBlock(g) {
     const n = g.leads.length, SHOW = 3;
@@ -877,7 +894,7 @@
       const sorted = pins.slice().sort((a, b2) => (size(b2[0]) || 0) - (size(a[0]) || 0));          // small pins stay on top
       const g = M.marks.selectAll("g.pin").data(sorted).join("g").attr("class", (d) => "pin" + (d[0] === M.lead ? " sel" : "") + (size(d[0]) ? "" : " nosize"))
         .attr("transform", (d) => "translate(" + d[2][0] + "," + d[2][1] + ")").attr("tabindex", 0).attr("role", "button")
-        .attr("aria-label", (d) => d[0].property + ", " + (sizeText(d[0]) || "size not found") + ", " + (STAGE_LABEL[d[0].stage] || ""))
+        .attr("aria-label", (d) => d[0].property + ", " + (sizeText(d[0]) || "size not found") + ", " + stageText(d[0]))
         .on("click", (ev, d) => { ev.stopPropagation(); hideTip(); go(leadHash(d[0])); })
         .on("keydown", (ev, d) => key(ev, () => go(leadHash(d[0]))))
         .on("mousemove", (ev, d) => showTip(d[0].property + " · " + (sizeText(d[0]) || "size not found") + (d[0].coord_source === "zip_centroid" ? " · approx. position" : ""), ev.clientX, ev.clientY + 8)).on("mouseleave", hideTip);
@@ -998,9 +1015,10 @@
   function sourceList(r) {
     const urls = r.sources.map(safeUrl).filter(Boolean);
     if (!urls.length) return el("p", {}, "Source link: ", nf());
+    const labels = r.source_labels || [];
     return el("ul", { class: "sources" }, urls.map((s) => { const url = new URL(s);
       return el("li", {}, el("a", { href: s, target: "_blank", rel: "noopener noreferrer" },
-        el("span", { class: "host", text: url.hostname.replace(/^www\./, "") }),
+        el("span", { class: "host", text: labels[r.sources.indexOf(s)] || url.hostname.replace(/^www\./, "") }),
         el("span", { class: "path", text: decodeURIComponent((url.pathname + url.search).replace(/\/$/, "")).slice(0, 90) || "/" }))); }));
   }
   function openPanel(r, trigger, ctx) {
@@ -1086,13 +1104,13 @@
     return [r.property + " (" + (place(r) || NFT) + ")",
       "Deal Radar rank " + r.rank + ", score " + Math.round(r.score ?? 0) + (r.lists.length ? ", List " + r.lists.join("/") : ""),
       "Size / care: " + (sizeText(r) || NFT) + ", " + (careText(r) || NFT),
-      "Stage: " + (STAGE_LABEL[r.stage] || NFT) + (bd.latest_signal_date ? " (latest signal " + bd.latest_signal_date + ")" : ""),
+      "Stage: " + (stageText(r) || NFT) + (bd.latest_signal_date ? " (latest signal " + bd.latest_signal_date + ")" : ""),
       "Signals: " + (r.signals.map(sigName).join(", ") || NFT),
       "Buyer: " + (r.buyer ? r.buyer + (buyerNotes(r) ? " " + buyerNotes(r) : "") + " [" + BUYER_LABEL[r.buyer_group] + "]" : NFT),
       "Why: " + whyShort(r),
       "Phone: " + (phoneText(c.phone) || NFT), "Website: " + (c.website || NFT),
       "Address: " + ([c.street, r.city, [r.state, c.zip5].filter(Boolean).join(" ")].filter(Boolean).join(", ") || NFT),
-      "Sources:", ...(r.sources.length ? r.sources.map((u) => "  " + u) : ["  " + NFT])].join("\n");
+      "Sources:", ...(r.sources.length ? r.sources.map((u, i) => "  " + ((r.source_labels || [])[i] ? r.source_labels[i] + ": " : "") + u) : ["  " + NFT])].join("\n");
   }
   async function copyText(text, button, idle) {
     try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
@@ -1188,7 +1206,7 @@
     const lines = S.rows.map((r) => { const c = r.contact || {};
       return [r.lists.join("/"), listRank(r), r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
         phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
-        r.signals.join(";"), r.stage, r.buyer || "NOT FOUND", r.buyer_group, r.score, whyShort(r), r.sources.join(" "), r.not_found.join(";")]; });
+        r.signals.join(";"), r.sale_status ? stageText(r) : r.stage, r.buyer || "NOT FOUND", r.buyer_group, r.score, whyShort(r), r.sources.join(" | "), r.not_found.join(";")]; });
     saveCsv(header, lines, "deal-radar-" + (S.tab === "all" ? "leads" : "list-" + S.tab.toLowerCase()) + (S.state ? "-" + S.state : "") + ".csv");
   });
 

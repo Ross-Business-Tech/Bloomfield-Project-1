@@ -239,7 +239,8 @@ class BuyerResolver:
                 today: date | None = None) -> Buyer:
         dropped = [x.name for x in hints if self.debtor_relation(facility_id, x.name) == "debtor"]
         hints = [x for x in hints if x.name not in dropped]
-        own = [x.name for x in hints if self.own_operator(facility_id, x.name.split(";")[0].strip(), facility_name)]
+        own = [x.name for x in hints if not x.forced and
+               self.own_operator(facility_id, x.name.split(";")[0].strip(), facility_name)]
         hints = [x for x in hints if x.name not in own]
         h = pick(hints)
         if h is None:

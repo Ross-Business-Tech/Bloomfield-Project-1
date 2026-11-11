@@ -29,7 +29,7 @@ NF = "NOT FOUND"
 # allowlist: nothing else from the view reaches the file (no score_breakdown, no ids, no review fields)
 FIELDS = ["lead_id", "property", "city", "state", "care_types", "units", "beds", "distress_type", "stage", "buyer",
           "buyer_status", "score", "flags", "source_urls", "buyer_source_url", "first_seen", "last_updated",
-          "score_breakdown"]
+          "score_breakdown", "sale_status", "ccn"]
 # score_breakdown keys the website may show (scores, stage source, dates, buyer type); anything else is dropped,
 # e.g. other buyers seen or dropped debtor names
 BREAKDOWN_KEYS = ["total", "stage", "buyer", "recency", "size_fit", "care_type_fit", "buyer_diversity_cap", "court_sale_priority", "closed_sale_penalty",
@@ -70,7 +70,9 @@ def contact_block(c: dict | None) -> dict:
 def item(r: dict, lists: list[str]) -> dict:
     """One lead for the website (public-view fields only)."""
     bd = r.get("breakdown") or {}
-    sources = list(dict.fromkeys([u for u in [r.get("buyer_source_url"), *(r.get("source_urls") or [])] if public_link(u)]))
+    links = source_links(r)
+    sources = [x["url"] for x in links]
+    sale = r.get("sale_status")
     d = lambda v: str(v)[:10] if v else None       # noqa: E731
     g = r.get("geo") or {}
     out = {"lead_id": str(r["lead_id"]) if r.get("lead_id") else None,
@@ -80,7 +82,10 @@ def item(r: dict, lists: list[str]) -> dict:
            "rank": r["rank"], "rank_a": r.get("rank_a"), "rank_b": r.get("rank_b"), "property": r["property"], "city": r.get("city"), "state": r.get("state"),
            "care_types": r.get("care_types") or [], "units": r.get("units"), "beds": r.get("beds"),
            "signals": [x.strip() for x in (r.get("distress_type") or "").split(",") if x.strip()],
-           "stage": r.get("stage"), "buyer": r.get("buyer") if r.get("buyer") not in (None, NF) else None,
+           "stage": "done" if sale else r.get("stage"),
+           "sale_status": {k: sale.get(k) for k in ("status", "date", "source_url", "portfolio") if sale.get(k) is not None} if sale else None,
+           "source_labels": [x["label"] for x in links],
+           "buyer": r.get("buyer") if r.get("buyer") not in (None, NF) else None,
            "buyer_status": r.get("buyer_status") or NF, "buyer_group": buyer_group(r), "score": r.get("score"),
            "flags": r.get("flags") or [], "sources": sources, "lists": lists,
            "breakdown": {k: bd[k] for k in BREAKDOWN_KEYS if k in bd},
@@ -90,6 +95,14 @@ def item(r: dict, lists: list[str]) -> dict:
                                        ("care_type", out["care_types"]), ("buyer", out["buyer"]),
                                        ("source", out["sources"])) if not v]
     return out
+def source_links(r: dict) -> list[dict]:
+    """Public links in reading order: buyer / sale evidence first, Care Compare instead of raw CMS API links."""
+    from src.score import links
+    sale = r.get("sale_status") or {}
+    first = [u for u in (public_link(r.get("buyer_source_url")), public_link(sale.get("source_url"))) if u]
+    return links.ordered([u for u in (r.get("source_urls") or []) if public_link(u)], first, r.get("ccn"))
+
+
 LEAD_COLS = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds",
              "signals", "stage", "buyer", "buyer_status", "score", "flags", "public_source_link", "not_found"]
 
@@ -111,13 +124,14 @@ def public_link(url) -> str | None:
 
 def lead_row(r: dict, lst: str) -> dict:
     size = r.get("units") or r.get("beds")
-    links = [u for u in (r.get("source_urls") or []) if public_link(u)]
+    links = [x["url"] for x in source_links(r)]
     link = public_link(r.get("buyer_source_url")) if lst == "A" else None
+    from src.score.links import stage_text
     ct = r.get("contact") or {}
     out = {"list": lst, "rank": r["rank"], "property": r["property"], "city": r.get("city") or NF,
            "state": r.get("state") or NF, "address": ", ".join(x for x in (ct.get("street"), ct.get("zip5")) if x) or NF,
            "phone": phone_text(ct.get("phone")) or NF, "website": public_link(ct.get("website")) or NF, "care_type": "/".join(r.get("care_types") or []) or NF,
-           "units_or_beds": size or NF, "signals": r.get("distress_type") or NF, "stage": r.get("stage") or NF,
+           "units_or_beds": size or NF, "signals": r.get("distress_type") or NF, "stage": stage_text(r.get("stage"), r.get("sale_status")) or NF,
            "buyer": r.get("buyer") or NF, "buyer_status": r.get("buyer_status") or NF,
            "score": float(r["score"]) if r.get("score") is not None else None,
            "flags": ";".join(r.get("flags") or []), "public_source_link": link or (links[0] if links else NF)}
@@ -144,13 +158,15 @@ def other_reason(r: dict) -> str | None:
     """Why a public lead is in neither List A nor List B (None when it is in one of them)."""
     from src.score.diversity import in_list_a
     no_buyer = r.get("buyer") in (None, NF)
-    if in_list_a(r) or (no_buyer and r.get("stage") != "sale"):
+    if in_list_a(r) or (no_buyer and r.get("stage") not in ("sale", "done")):
         return None
     st = r.get("buyer_status")
     if st == "candidate":
         return "candidate"                 # stalking-horse / proposed bidder
     if st == "stale":
         return "stale"                     # named, ownership change older than buyer_named_max_months
+    if no_buyer and (r.get("sale_status") or r.get("stage") == "done"):
+        return "sale_done_no_public_buyer"  # sale approved or closed; the final buyer is not public
     if no_buyer:
         return "sale_no_public_buyer"      # sale under way, buyer not public
     return "shell_or_closed"               # shell buyer, undated buyer, or a sale that closed > 12 months ago
@@ -168,7 +184,7 @@ def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dic
         else:
             reasons[other_reason(r) or "shell_or_closed"] += 1
     return {"leads": len(items_rows), "list_a": a, "list_b": b, "other": sum(reasons.values()),
-            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "shell_or_closed")},
+            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", "shell_or_closed")},
             "list_c_buyers": len(list_c_rows), "list_c_linked_leads": linked_leads}
 
 
@@ -197,6 +213,7 @@ def build(rows: list[dict], skip: set[str], contacts: dict | None = None, geo: d
         x["contact"] = contacts.get(str(r.get("facility_id")))
         x["geo"] = (geo or {}).get(str(r.get("facility_id")))
         x["score"] = float(x["score"]) if x["score"] is not None else None
+        x["sale_status"] = x.get("sale_status") or (r.get("score_breakdown") or {}).get("sale_status")
         x["source_urls"] = [u for u in (x["source_urls"] or []) if public_link(u)]
         x["buyer_source_url"] = public_link(x["buyer_source_url"])
         kept.append(x)
@@ -428,6 +445,13 @@ def main(argv=None) -> int:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
         contacts = fetch_contacts(conn)
         geo = fetch_geo(conn)
+        # sale status is built from public court / news sources only; the public view drops the breakdown of leads
+        # that also carry private content, so it is read by flag + facility here
+        sale = {str(r["f"]): r["s"] for r in conn.execute(
+            "select facility_id f, score_breakdown->'sale_status' s from app.lead where score_breakdown ? 'sale_status'").fetchall()}
+        for r in rows:
+            if {"sale_approved", "sale_closed"} & set(r.get("flags") or []):
+                r["sale_status"] = sale.get(str(r["facility_id"]))
     skip = excluded()
     snap = build(rows, skip, contacts, geo)
     with connect() as conn:

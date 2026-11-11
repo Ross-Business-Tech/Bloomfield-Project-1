@@ -38,6 +38,7 @@ class BuyerHint:
     weight: float = 1.0
     family_id: int | None = None
     parent: str | None = None   # buyer's parent org, only when a source states it (config/court_facts.yaml)
+    forced: bool = False        # hand-check override: kept even when the own-operator rule would drop it
 
 
 def _http(url) -> bool:
@@ -403,13 +404,16 @@ def licensed_fact_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint]]:
 # ── news: extraction → distress / market_sale, buyers, operator changes ──────────────────────────────────────────
 def news_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
     out, hints = [], []
+    ROUNDUP_DROPPED.clear()
     changes = defaultdict(list)
     sale_orgs = {(r["facility_id"], r["source_url"]): r["buyer"] for r in conn.execute(
         "select facility_id::text, source_url, buyer_org_id::text buyer from core.ownership_event "
         "where event_type = 'news_reported_sale' and buyer_org_id is not null").fetchall()}
     rows = conn.execute(
         "select d.id doc_id, d.source_id, d.source_url, d.published_at::date pub, d.title, e.fields, "
-        "x.facility_id::text, x.review_status, x.match_score, x.source_key xkey "
+        "x.facility_id::text, x.review_status, x.match_score, x.source_key xkey, "
+        "case when e.fields->>'buyer_or_new_operator' is not null then d.body_text end body, "
+        "(select f.canonical_name from core.facility f where f.facility_id = x.facility_id) fac_name "
         "from stg.extraction e join raw.document d on d.id = e.document_id "
         "join core.facility_xref x on x.source_id = d.source_id "
         "  and (x.source_key = 'doc:' || d.id or x.source_key like 'doc:' || d.id || ':%%') "
@@ -432,8 +436,15 @@ def news_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
             if link_nr:
                 s.link_status = "needs_review"
                 s.evidence_text += f" [facility link needs review, score {r['match_score']}]"
+            if stage == "sale" and st != "market_sale" and not link_nr and rules.news_reports_closing(what):
+                s.sale_status = "closed"          # the article reports a finished sale (date: stated, else publication)
+                s.sale_date = rules.news_change_date(f.get("event_dates"), r["pub"])
             out.append(s)
         buyer = f.get("buyer_or_new_operator")
+        # roundup rule (AUDIT ONLY, see docs/ROADMAP.md): in a multi-deal article the buyer should be named in the same
+        # deal section as the property. The check is recorded, not applied: it still has false alarms.
+        if rules.is_found(buyer) and rules.buyer_in_property_section(r["body"], r["fac_name"], buyer) is False:
+            ROUNDUP_DROPPED[fid] = buyer.strip()
         # an operator change / buyer from an article needs a confirmed building link (a 75-89 fuzzy match that
         # still awaits review only shows the distress, flagged): conservative, Wave 4
         if rules.is_found(buyer) and (types or "operator_change" in (dts or [])) and not link_nr:
@@ -465,7 +476,7 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
         "from core.case_family_member m join stg.court_case sc on sc.id = m.stg_court_case_id").fetchall()
     keys = _case_keys(conn, members)
     cases = {(r["court"], r["docket_no"]): r for r in conn.execute(
-        "select case_id::text, court, docket_no, chapter, docket_url, claims_agent_url from core.legal_case").fetchall()}
+        "select case_id::text, court, docket_no, chapter, docket_url, claims_agent_url, debtor_name from core.legal_case").fetchall()}
     cf = defaultdict(list)
     for r in conn.execute("select case_id::text, facility_id::text, link_method, match_score from core.case_facility").fetchall():
         cf[r["case_id"]].append(r)
@@ -510,7 +521,8 @@ def _family_case_links(conn) -> dict[int, list[dict]]:
                 "facility_id": fid, "link_method": method,
                 "match_score": link["match_score"], "review_status": rs, "chapter": lc["chapter"] or m["chapter"],
                 "url": lc["docket_url"] if _http(lc["docket_url"]) else lc["claims_agent_url"],
-                "docket": f"{key[0]}:{key[1]}", "confirmed_by": confirmed_by})
+                "docket": f"{key[0]}:{key[1]}", "confirmed_by": confirmed_by,
+                "debtor": lc["debtor_name"]})
     _add_manual_links(conn, members, keys, cases, out)
     return out
 
@@ -541,7 +553,14 @@ def _add_manual_links(conn, members, keys, cases, out) -> None:
                              "docket": x["case"], "confirmed_by": x.get("confirmed_by", "petition")})
 
 
+FORMER_OPERATOR: set = set()     # facilities whose parent-case link was dropped by the former-operator rule (last build)
+WRONG_DOCKET: set = set()        # facilities whose docket link named another case and was replaced (last build)
+ROUNDUP_DROPPED: dict = {}       # facility -> buyer the roundup check could not place in the property's section (audit only)
+
+
 def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
+    FORMER_OPERATOR.clear()
+    WRONG_DOCKET.clear()
     """Gate 2: only senior_housing 'yes' (full weight) or 'maybe' (lower weight + flag) families filed within
     36 months create legal signals; older families are context only. A link confirmed by address / CCN / the CMS
     operator = full weight; a link through a parent owner org = debtor_org_link_weight (portfolio_link); a link by
@@ -559,6 +578,49 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
             skipped["sale_evidence_excluded_by_hand"] += 1
             continue
         sales[r["family_id"]].append(r)
+    # Nov 11 hand check, former-operator rule: a home that CMS shows changing hands to a non-debtor BEFORE the petition
+    # date left the debtor before the bankruptcy; the parent's case / sale is not attached to it.
+    from src.enrich.steps import same_party
+    chows = defaultdict(list)
+    for r in conn.execute("select e.facility_id::text f, e.effective_date d, o.name from core.ownership_event e "
+                          "join core.organization o on o.org_id = e.buyer_org_id where e.event_type = 'chow' "
+                          "and e.effective_date is not null").fetchall():
+        chows[r["f"]].append((r["d"], r["name"]))
+    debtors = defaultdict(set)
+    for r in conn.execute("select f.family_id, f.family_name n from core.case_family f union all "
+                          "select m.family_id, coalesce(sc.debtor_name, sc.case_name) from core.case_family_member m "
+                          "join stg.court_case sc on sc.id = m.stg_court_case_id").fetchall():
+        if r["n"]:
+            debtors[r["family_id"]].add(r["n"])
+    fac_names = {r["f"]: (r["canonical_name"], r["city"]) for r in conn.execute(
+        "select facility_id::text f, canonical_name, city from core.facility where facility_id in "
+        "(select facility_id from core.case_facility)").fetchall()}
+
+    undated = defaultdict(list)                # CHOW rows with no date: never enough to drop a signal
+    for r in conn.execute("select e.facility_id::text f, o.name from core.ownership_event e join core.organization o "
+                          "on o.org_id = e.buyer_org_id where e.event_type = 'chow' and e.effective_date is null").fetchall():
+        undated[r["f"]].append(r["name"])
+    open_roles = defaultdict(set)              # orgs CMS still lists (no end date) as operator / owner of the home
+    for r in conn.execute("select r.facility_id::text f, o.name from core.facility_role r join core.organization o "
+                          "using (org_id) where r.role in ('operator','licensee','owner','indirect_owner') "
+                          "and r.end_date is null").fetchall():
+        open_roles[r["f"]].add(r["name"])
+
+    def former_operator(fid, fam_id, filed):
+        """'left' = CMS dates a change of ownership to a non-debtor BEFORE the petition and no debtor is still listed
+        on the home; 'suspect' = the same picture but a date is missing or a debtor is still listed; else None."""
+        ds = debtors.get(fam_id, ())
+        non_debtor = lambda n: not any(same_party(n, d) for d in ds)      # noqa: E731
+        if not filed:
+            return "suspect" if any(non_debtor(n) for _, n in chows.get(fid, [])) or \
+                any(non_debtor(n) for n in undated.get(fid, [])) else None
+        before = sorted(x for x in chows.get(fid, []) if x[0] < filed)
+        if before and non_debtor(before[-1][1]):
+            still = any(same_party(n, d) for n in open_roles.get(fid, ()) for d in ds)
+            return "suspect" if still else "left"
+        if not before and any(non_debtor(n) for n in undated.get(fid, [])):
+            return "suspect"
+        return None
     manual_sales = {}                       # family_id -> hand-checked sale facts (config/court_facts.yaml)
     for x in facts.get("sales") or []:
         fam = fam_of_case.get(x["case"])
@@ -569,7 +631,8 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
             raise ValueError(f"config/court_facts.yaml sales: unknown stage_text {x['stage_text']!r}")
         manual_sales[fam] = x
         sales[fam].append({"channel": "manual", "stage_text": x["stage_text"], "buyer_name": None,
-                           "source_url": x["source_url"], "evidence_text": x.get("evidence_text") or ""})
+                           "source_url": x["source_url"], "evidence_text": x.get("evidence_text") or "",
+                           "portfolio": bool(x.get("portfolio"))})
     for fam_id, fam in fams.items():
         if fam["senior_housing"] not in ("yes", "maybe") or fam["within_36m"] is not True:
             skipped["older_or_not_senior"] += 1
@@ -600,14 +663,29 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                            if rules.is_found(s["buyer_name"])), None)
         msale = manual_sales.get(fam_id)
         hearing = f"; sale hearing {msale['sale_hearing']}" if msale and msale.get("sale_hearing") else ""
+        sale_status = rules.court_sale_status(top_sale["stage_text"]) if top_sale else None
+        sale_date = None
+        if sale_status:
+            sale_date = (date.fromisoformat(str(msale["event_date"])) if msale and top_sale.get("channel") == "manual"
+                         and msale.get("event_date") else rules.sale_order_date(top_sale))
+        month_only = bool(sale_status) and not (msale and top_sale.get("channel") == "manual" and msale.get("event_date")) \
+            and rules.sale_date_month_only(top_sale)
         for fid, (_, l) in best.items():
             conf = l["confirmed_by"]
+            former = former_operator(fid, fam_id, fam["filed_date"]) if conf != "human" and l["link_method"] != "manual" else None
+            if former == "left":
+                skipped["former_operator_chow_before_petition"] += 1
+                FORMER_OPERATOR.add(fid)
+                continue
             direct = conf in rules.DIRECT_CONFIRMATIONS
             portfolio = l["link_method"] == "debtor_org" and not direct
             w = fam_w * (rules.wave3("debtor_org_link_weight") if portfolio else 1.0)
             flags = (["senior_housing_maybe"] if fam["senior_housing"] == "maybe" else []) + \
                     (["portfolio_link"] if portfolio else []) + \
-                    (["court_name_only"] if conf is None else [])
+                    (["court_name_only"] if conf is None else []) + \
+                    (["former_operator_suspect"] if former == "suspect" else [])
+            if former == "suspect":
+                skipped["former_operator_suspect_kept"] += 1
             how = {"human": "a person checked it",
                    "cms_operator": "debtor is this facility's operator in CMS",
                    "petition": "the petition lists this address",
@@ -616,6 +694,13 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                 conf, "facility name only" + (f" {l['match_score']}" if l["match_score"] else "") + "; not confirmed")
             nr = l["review_status"] == "needs_review" and not direct
             url = l["url"] if _http(l["url"]) else fam["claims_agent_url"]
+            # links rule: never attach a docket whose own case name is another debtor / property
+            if rules.docket_names_other_case(url, l.get("debtor"), fam["family_name"], *fac_names.get(fid, ())):
+                alt = fam["claims_agent_url"] if _http(fam["claims_agent_url"]) else (top_sale or {}).get("source_url")
+                if _http(alt):
+                    url = alt
+                    skipped["docket_of_other_case_replaced"] += 1
+                    WRONG_DOCKET.add(fid)
             if btype and _http(url):
                 s = Sig(fid, btype, stage_of(btype), f"fam:{fam_id}:{fid}:{btype}", url, fam["filed_date"], None,
                         f"{fam['family_name']}: Chapter {btype.split('_')[1]} filed {fam['filed_date'] or 'date NOT FOUND'} "
@@ -628,7 +713,8 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                         rules.sale_stage_rank(top_sale["stage_text"]),
                         f"{fam['family_name']}: {top_sale['stage_text']}{hearing} — {top_sale['evidence_text'] or ''}"[:500],
                         "legal", "code", w, "needs_review" if nr else "auto", l["link_method"], fam_id,
-                        fam["family_name"], flags, conf)
+                        fam["family_name"], flags, conf, sale_status, sale_date, month_only,
+                        bool(sale_status and top_sale.get("portfolio")))
                 out.append(s)
             if buyer_sale:
                 hints.append(BuyerHint(fid, buyer_sale["buyer_name"].strip(),
@@ -722,7 +808,11 @@ def build(conn, today: date | None = None, fids: list[str] | None = None):
             seen.add(s.source_key)
             uniq.append(s)
     hints = news_hints + own_hints + legal_hints + licensed_buyer_hints(conn, legal, fids) + fact_hints
-    return uniq, hints, {"legal_skipped": skipped}
+    from . import overrides
+    uniq, hints, ov = overrides.apply(conn, uniq, hints, fids)
+    return uniq, hints, {"legal_skipped": skipped, "former_operator_rule": len(FORMER_OPERATOR),
+                         "wrong_docket_replaced": len(WRONG_DOCKET), "roundup_buyers_suspect_not_applied": len(ROUNDUP_DROPPED),
+                         "overrides": ov}
 
 
 COLS = ["facility_id", "category", "signal_type", "stage", "event_date", "value", "evidence_text", "source_url",
