@@ -278,6 +278,7 @@ class Sig:
     sale_status: str | None = None       # 'approved' (court sale order) / 'closed' (a public source reports the closing)
     sale_date: date | None = None        # date of that order / closing (None = date NOT FOUND)
     sale_month_only: bool = False        # the source gives a month ("January 2026"), not a day
+    sale_portfolio: bool = False         # the order / closing covers a whole portfolio; not checked for this home
 
     @property
     def distress(self) -> bool:

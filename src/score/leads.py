@@ -113,12 +113,27 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
             when = top.sale_date.isoformat() if top.sale_date else None
             sale = {"status": top.sale_status, "date": when[:7] if when and top.sale_month_only else when,
                     "source_url": top.source_url, "basis": "court" if top.category == "legal" else "news report"}
+            if top.sale_portfolio:
+                sale["portfolio"] = True          # portfolio-level fact, not checked for this home
     sale_day = rules.stated_date(sale["date"] if len(str(sale["date"])) > 7 else str(sale["date"]) + "-28") \
         if sale and sale.get("date") else None
     sale_old = bool(sale and sale["status"] == "closed" and sale_day
                     and rules.months_between(sale_day, today) > pen["after_months"])
+    if sale and sale["status"] == "closed":
+        # Nov 11 decision: the stage never RAISES a score. "Sale approved" scores like "In a sale"; "Closed / sold"
+        # scores like "Late stage" at most (post-sale turnaround window) and is no longer an open court sale, so
+        # live deals rank above closed ones. A home whose best stage was lower keeps its old stage score.
+        late = float(sc["stage_weight"]["late"])
+        # A portfolio-wide closing is not checked for this home: its case signals count at the family overflow
+        # weight for every home (no home gets the case's full points from an inferred stage).
+        inferred = bool(sale.get("portfolio"))
+        best_pts = max(min(pts(s), late * s.weight * (min(factor(s), overflow) if inferred and s.family_id is not None
+                                                      else factor(s))) for s in current)
+        if closed_pts:
+            closed_pts += court_pts                        # the court-sale priority is taken back once, below
+        court_pts = 0.0
     if sale_old and not closed_pts:
-        closed_pts = -float(pen["points"]) - court_pts     # same rule as a buyer-dated closing: old news for a lender
+        closed_pts = -float(pen["points"])                 # same rule as a buyer-dated closing: old news for a lender
     market = [s for s in sigs if s.signal_type == "market_sale" and rules.in_lead_window(s, today)]
     market_pts = float(rules.wave3("market_sale_bonus")) if market else 0.0
     breakdown = {
@@ -168,6 +183,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("sale_closed_over_12m")
     if sale:
         flags.append("sale_" + sale["status"])
+        if sale.get("portfolio"):
+            flags.append("portfolio_sale_inferred")
     for f in ov.get("flags") or []:
         if f not in flags:
             flags.append(f)

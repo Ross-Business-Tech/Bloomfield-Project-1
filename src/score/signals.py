@@ -631,7 +631,8 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
             raise ValueError(f"config/court_facts.yaml sales: unknown stage_text {x['stage_text']!r}")
         manual_sales[fam] = x
         sales[fam].append({"channel": "manual", "stage_text": x["stage_text"], "buyer_name": None,
-                           "source_url": x["source_url"], "evidence_text": x.get("evidence_text") or ""})
+                           "source_url": x["source_url"], "evidence_text": x.get("evidence_text") or "",
+                           "portfolio": bool(x.get("portfolio"))})
     for fam_id, fam in fams.items():
         if fam["senior_housing"] not in ("yes", "maybe") or fam["within_36m"] is not True:
             skipped["older_or_not_senior"] += 1
@@ -712,7 +713,8 @@ def legal_signals(conn, fids=None) -> tuple[list[Sig], list[BuyerHint], dict]:
                         rules.sale_stage_rank(top_sale["stage_text"]),
                         f"{fam['family_name']}: {top_sale['stage_text']}{hearing} — {top_sale['evidence_text'] or ''}"[:500],
                         "legal", "code", w, "needs_review" if nr else "auto", l["link_method"], fam_id,
-                        fam["family_name"], flags, conf, sale_status, sale_date, month_only)
+                        fam["family_name"], flags, conf, sale_status, sale_date, month_only,
+                        bool(sale_status and top_sale.get("portfolio")))
                 out.append(s)
             if buyer_sale:
                 hints.append(BuyerHint(fid, buyer_sale["buyer_name"].strip(),

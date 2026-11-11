@@ -83,7 +83,7 @@ def item(r: dict, lists: list[str]) -> dict:
            "care_types": r.get("care_types") or [], "units": r.get("units"), "beds": r.get("beds"),
            "signals": [x.strip() for x in (r.get("distress_type") or "").split(",") if x.strip()],
            "stage": "done" if sale else r.get("stage"),
-           "sale_status": {k: sale.get(k) for k in ("status", "date", "source_url")} if sale else None,
+           "sale_status": {k: sale.get(k) for k in ("status", "date", "source_url", "portfolio") if sale.get(k) is not None} if sale else None,
            "source_labels": [x["label"] for x in links],
            "buyer": r.get("buyer") if r.get("buyer") not in (None, NF) else None,
            "buyer_status": r.get("buyer_status") or NF, "buyer_group": buyer_group(r), "score": r.get("score"),

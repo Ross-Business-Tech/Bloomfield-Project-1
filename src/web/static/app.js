@@ -23,7 +23,7 @@
     const s = r.sale_status;
     if (!s) return STAGE_LABEL[r.stage] || "";
     return (s.status === "closed" ? "Closed / sold" : "Sale approved") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
-      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date));
+      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date)) + (s.portfolio ? " (portfolio sale)" : "");
   }
   const STAGE_TIP = { early: "Early distress: warning signs such as losses or low occupancy, with no legal action yet.",
     middle: "Deepening: several signals at once, or a regulator or lender has stepped in.",
@@ -77,7 +77,8 @@
     ["List A / List B / List C", "A: live deals with a buyer named in a source. B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
   ];
   const FLAG_TEXT = { sale_approved: "a court order approved the sale", sale_closed: "a public source reports the sale closed",
-    closing_unverified: "closing not verified in a public source", sale_date_is_report_date: "the sale date is the date of the report",
+    closing_unverified: "closing not verified in a public source",
+    portfolio_sale_inferred: "the sale stage comes from a portfolio-wide sale; this home is not named in the source", sale_date_is_report_date: "the sale date is the date of the report",
     debtor_link_unverified: "the link between this building and the bankrupt company is not verified, so the bankruptcy is not scored",
     buyer_operating_transferee: "the named party took over operations; the real-estate buyer is not verified",
     buyer_court_approved_purchaser: "the buyer is the purchaser approved by the court",
