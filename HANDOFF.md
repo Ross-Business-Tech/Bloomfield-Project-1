@@ -8,10 +8,14 @@
 - **The UI is map-first:** US map → state → city bubble → property pin → lead card (rank, score, stage, buyer status,
   signals with source links, public phone / website). Top bar: Map, Leads, Buyers, The numbers, Watch list, and How
   it works behind `?`.
-- **Final numbers** (published snapshot, Nov 11, 2026, 17:45 UTC): 533 public leads = List A 235 + List B 243 + 55
-  other; List C 159 repeat buyers linked to 43 leads; 44 states; named buyer 44%; public contact 45%; watch list
-  7,225. The full table is in [README → Final state](README.md#final-state-nov-11-2026).
-- **Tests:** `pytest -q` → 288 passed. CI runs the generic leak guard on every pull request.
+- **Final numbers** (published snapshot, Nov 11, 2026, after the human review): 485 public leads = List A 206 +
+  List B 228 + 51 other; List C 159 repeat buyers linked to 35 leads; 44 states; named buyer 43%; public contact 45%;
+  watch list 7,255. The full table is in [README → Final state](README.md#final-state-nov-11-2026).
+- **Nov 11 human review of the top 20:** new stages "Sale approved" / "Closed / sold" with dates (closed sales rank
+  below live ones), buyers corrected from court filings (`config/manual_overrides.yaml`), the former-operator rule
+  (533 → 485 leads), source links best page first. Open: roadmap items 11 (roundup rule for buyers, audit only) and
+  12 (closing notices for approved sales). Hand-over files: `python -m src.web.final_files`.
+- **Tests:** `pytest -q` → 295 passed. CI runs the generic leak guard on every pull request.
 - The contacts import (`config/contacts_manual.csv` → `core.facility_contact`) and its migration are **done**;
   contacts show on the lead card and in CSV downloads.
 

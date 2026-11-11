@@ -8,6 +8,7 @@ Each override names one building (CMS CCN, or name + city + state), carries a pu
   buyer: NOT FOUND             remove a buyer no source supports
   sale_status: approved|closed stage "Sale approved (date)" / "Closed / sold (date)"
   flags: [..]                  copied onto the lead
+  extra_links: [url]           further public links for this building, listed right after the main source
 Nothing here is guessed: an override without a public link and a date is rejected (rules.manual_overrides).
 """
 from __future__ import annotations
@@ -28,6 +29,17 @@ def _facility(conn, m: dict) -> str | None:
                            "and upper(coalesce(city, '')) = upper(%s) and coalesce(state, '') = %s "
                            "order by facility_id limit 1", (m["name"], m.get("city") or "", m.get("state") or "")).fetchone()
     return row["f"] if row else None
+
+
+def extra_links(conn) -> dict:
+    """{facility_id: [public links]} from the overrides (read by the website snapshot)."""
+    out = {}
+    for o in rules.manual_overrides():
+        urls = [u for u in (o.get("extra_links") or []) if str(u).startswith(("http://", "https://"))]
+        fid = _facility(conn, o["match"]) if urls else None
+        if fid:
+            out.setdefault(fid, []).extend(urls)
+    return out
 
 
 def apply(conn, sigs: list, hints: list, fids=None) -> tuple[list, list, dict]:

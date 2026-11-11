@@ -8,6 +8,8 @@ overrides:
     date: 2026-10-13
     note: "Sonida was named successful bidder (Sep 21 filing) and the sale order followed on Oct 13, 2026; closing not verified as of Nov 4."
     buyer: {name: "Sonida Acquisition LLC", status: named, role: "court approved purchaser"}
+    extra_links:                    # secondary buyer source: the stalking-horse notice that names Grapevine
+      - https://altswire.com/ihc-secures-341-7m-in-stalking-horse-bids-as-deadline-slips-to-july-24/
     sale_status: approved
     flags: [closing_unverified]
     replace_links:

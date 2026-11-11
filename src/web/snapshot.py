@@ -29,7 +29,7 @@ NF = "NOT FOUND"
 # allowlist: nothing else from the view reaches the file (no score_breakdown, no ids, no review fields)
 FIELDS = ["lead_id", "property", "city", "state", "care_types", "units", "beds", "distress_type", "stage", "buyer",
           "buyer_status", "score", "flags", "source_urls", "buyer_source_url", "first_seen", "last_updated",
-          "score_breakdown", "sale_status", "ccn"]
+          "score_breakdown", "sale_status", "ccn", "extra_links"]
 # score_breakdown keys the website may show (scores, stage source, dates, buyer type); anything else is dropped,
 # e.g. other buyers seen or dropped debtor names
 BREAKDOWN_KEYS = ["total", "stage", "buyer", "recency", "size_fit", "care_type_fit", "buyer_diversity_cap", "court_sale_priority", "closed_sale_penalty",
@@ -99,8 +99,9 @@ def source_links(r: dict) -> list[dict]:
     """Public links in reading order: buyer / sale evidence first, Care Compare instead of raw CMS API links."""
     from src.score import links
     sale = r.get("sale_status") or {}
-    first = [u for u in (public_link(r.get("buyer_source_url")), public_link(sale.get("source_url"))) if u]
-    return links.ordered([u for u in (r.get("source_urls") or []) if public_link(u)], first, r.get("ccn"))
+    first = [u for u in (public_link(r.get("buyer_source_url")), public_link(sale.get("source_url")),
+                         *(r.get("extra_links") or [])) if public_link(u)]
+    return links.ordered([*(r.get("source_urls") or []), *(r.get("extra_links") or [])], first, r.get("ccn"))
 
 
 LEAD_COLS = ["list", "rank", "property", "city", "state", "address", "phone", "website", "care_type", "units_or_beds",
@@ -449,7 +450,10 @@ def main(argv=None) -> int:
         # that also carry private content, so it is read by flag + facility here
         sale = {str(r["f"]): r["s"] for r in conn.execute(
             "select facility_id f, score_breakdown->'sale_status' s from app.lead where score_breakdown ? 'sale_status'").fetchall()}
+        from src.score import overrides
+        more = overrides.extra_links(conn)
         for r in rows:
+            r["extra_links"] = more.get(str(r["facility_id"]))
             if {"sale_approved", "sale_closed"} & set(r.get("flags") or []):
                 r["sale_status"] = sale.get(str(r["facility_id"]))
     skip = excluded()

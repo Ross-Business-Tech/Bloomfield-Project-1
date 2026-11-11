@@ -18,18 +18,25 @@ buyers), **The numbers** (reconciliation and funnel), **Watch list** and **How i
 
 | Final number (published snapshot, Nov 11, 2026) | Value |
 |---|---|
-| Public leads (main list) | **533** = List A 235 + List B 243 + 55 other |
-| Other (neither A nor B) | 18 stalking-horse candidates · 23 older ownership changes · 13 sales under way with no public buyer · 1 shell / closed |
-| List C: repeat buyers | 159 companies, linked to 43 of the leads |
+| Public leads (main list) | **485** = List A 206 + List B 228 + 51 other |
+| Other (neither A nor B) | 18 stalking-horse candidates · 24 older ownership changes · 3 sales under way with no public buyer · 5 sales approved or closed with no public buyer · 1 shell / closed |
+| List C: repeat buyers | 159 companies, linked to 35 of the leads |
 | States covered | 44 |
-| Leads with a named buyer | 44% (236) |
-| Leads with a public phone or website | 45% (239) |
-| AL / IL / MC / CCRC share | 11% of the main list · 35% of the top 20 · 44% of the top 50 |
-| Watch list (Explore) | 7,225 buildings |
-| Tests | 288 passing (`pytest -q`) |
+| Leads with a named buyer | 43% (207) |
+| Leads with a public phone or website | 45% (217) |
+| AL / IL / MC / CCRC share | 13% of the main list · 35% of the top 20 · 42% of the top 50 |
+| Watch list (Explore) | 7,255 buildings |
+| Stage "Sale approved" / "Closed / sold" | 22 / 186 (176 of the closed ones come from one portfolio sale and are flagged `portfolio_sale_inferred`) |
+| Tests | 295 passing (`pytest -q`) |
 
 Every buyer and signal on the site rests on a public source link; missing values read `NOT FOUND`. Licensed facts are
 never shown or scored in the public view.
+
+**Nov 11 human review of the top 20:** stages now read "Sale approved (date)" or "Closed / sold (date)" and closed
+sales rank below live ones; buyers were corrected from court filings (`config/manual_overrides.yaml`, each with a
+public link and a date); a parent company's bankruptcy is no longer attached to a home that changed hands before the
+petition date (533 → 485 leads); source links are listed best page first. Still open: the roundup rule for buyers and
+closing notices for approved sales ([roadmap](docs/ROADMAP.md) items 11 and 12).
 
 ### Refresh and publish the site
 
