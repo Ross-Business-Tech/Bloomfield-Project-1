@@ -104,7 +104,7 @@
 
   /* Headline counts come from the snapshot's summary block; the browser only counts when the block is missing. */
   const SUM = (key, fallback) => { const v = ((S.data || {}).summary || {})[key]; return typeof v === "number" ? v : fallback; };
-  const S = { data: null, tab: "all", state: "", page: 1, sort: { key: "rank", dir: 1 }, mode: "table", sel: -1, ctx: [], ctxIdx: -1 };
+  const S = { data: null, daily: null, dailyFilter: "", tab: "all", state: "", page: 1, sort: { key: "rank", dir: 1 }, mode: "table", sel: -1, ctx: [], ctxIdx: -1 };
   const $ = (id) => document.getElementById(id);
 
   function el(tag, props, ...kids) {
@@ -222,6 +222,77 @@
     return s + ".";
   }
 
+  /* ---------- Daily check: did anything change today that affects a lead? ----------
+     Reads snapshot.daily = { date, checked_at, changes: [{lead_id, date, kind, title, detail, source_url, source_label,
+     score_before, score_after}] }. kind: confirmed | escalated | weakened. Without that block nothing here shows. */
+  const DAILY = { confirmed: ["Confirmed", "New evidence supports this lead."],
+    escalated: ["Escalated", "The lead moved to a later stage, or a buyer is now named."],
+    weakened: ["Weakened", "New information points the other way. Check it before acting."] };
+  function buildDaily() {
+    const d = S.data.daily;
+    if (!d || !Array.isArray(d.changes)) { S.daily = null; return; }
+    const by = new Map();
+    for (const c of d.changes) {
+      if (!DAILY[c.kind] || !c.lead_id) continue;
+      if (!by.has(c.lead_id)) by.set(c.lead_id, []);
+      by.get(c.lead_id).push(c);
+    }
+    for (const list of by.values()) list.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    S.daily = { date: d.date, checked: d.checked_at, by };
+  }
+  function dailyToday(r) {          // the lead's change dated today, or null
+    if (!S.daily) return null;
+    const list = S.daily.by.get(r.lead_id) || [];
+    return list.find((c) => c.date === S.daily.date) || null;
+  }
+  function dailyKind(r) { if (!S.daily) return ""; const c = dailyToday(r); return c ? c.kind : "same"; }
+  function dailyChip(r) {
+    const c = dailyToday(r);
+    return c ? el("span", { class: "chip daily-" + c.kind, text: DAILY[c.kind][0], "data-tip": DAILY[c.kind][1] + " " + c.title }) : null;
+  }
+  function scoreMove(c) {
+    return typeof c.score_before === "number" && typeof c.score_after === "number"
+      ? "Score " + Math.round(c.score_before) + " → " + Math.round(c.score_after) : null;
+  }
+  function changeItem(c, withName) {
+    const u = safeUrl(c.source_url), lead = withName ? S.data.items.find((x) => x.lead_id === c.lead_id) : null;
+    return el("li", { class: "chg chg-" + c.kind },
+      el("span", { class: "chip daily-" + c.kind, text: DAILY[c.kind][0] }),
+      el("div", {},
+        el("p", { class: "chg-title" }, lead ? el("a", { href: "#/leads", text: lead.property, onclick: (e) => { e.preventDefault(); openPanel(lead, null, S.data.items); } }) : null,
+          lead ? " · " : null, c.title),
+        c.detail ? el("p", { class: "muted small", text: c.detail }) : null,
+        el("p", { class: "muted small" }, fmtDate(c.date), scoreMove(c) ? " · " + scoreMove(c) : "", u ? [" · ", ext(u, c.source_label || hostOf(u))] : null)));
+  }
+  function renderDailyStrip() {
+    const box = $("daily");
+    if (!S.daily) { box.classList.add("hidden"); return; }
+    const items = S.data.items, counts = { confirmed: 0, escalated: 0, weakened: 0, same: 0 };
+    for (const r of items) counts[dailyKind(r)]++;
+    const todays = [...S.daily.by.values()].flat().filter((c) => c.date === S.daily.date);
+    const tab = (key, label, n) => el("button", { type: "button", class: "dtab" + (S.dailyFilter === key ? " on" : ""), "aria-pressed": String(S.dailyFilter === key),
+      onclick: () => { S.dailyFilter = S.dailyFilter === key ? "" : key; S.page = 1; S.sel = -1; renderDailyStrip(); render(); } },
+      el("b", { text: fmtInt(n) }), el("span", { text: label }));
+    box.replaceChildren(
+      el("div", { class: "daily-head" }, el("h2", { text: "Daily check" }),
+        el("span", { class: "muted" }, "Every lead is re-checked against the latest news and filings. Last check: ", fmtDate(S.daily.checked || S.daily.date, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))),
+      el("div", { class: "dtabs", role: "group", "aria-label": "Show leads by today's check" },
+        tab("confirmed", "Confirmed", counts.confirmed), tab("escalated", "Escalated", counts.escalated),
+        tab("weakened", "Weakened", counts.weakened), tab("same", "No change", counts.same)),
+      todays.length ? el("ul", { class: "chglist" }, todays.sort((a, b) => (a.kind === "weakened" ? 0 : 1) - (b.kind === "weakened" ? 0 : 1)).slice(0, 3).map((c) => changeItem(c, true))) : null,
+      todays.length > 3 ? el("p", { class: "muted small", text: "Showing 3 of " + todays.length + " changes today. Use the buttons above to filter the list." }) : null);
+    box.classList.remove("hidden");
+  }
+  function dailySection(r) {
+    if (!S.daily) return null;
+    const list = S.daily.by.get(r.lead_id) || [], t = dailyToday(r);
+    return el("section", { class: "psec" }, el("h3", {}, el("span", { class: "step", text: "↻" }), "Daily check"),
+      el("p", { class: "daily-state" }, t ? el("span", { class: "chip daily-" + t.kind, text: DAILY[t.kind][0] }) : el("span", { class: "chip plain", text: "No change today" }), " ",
+        el("span", { class: "muted", text: t ? DAILY[t.kind][1] : "Nothing new in the news or filings today that affects this lead." })),
+      list.length ? [el("h4", { text: "Last 7 days" }), el("ul", { class: "chglist" }, list.map((c) => changeItem(c, false)))]
+        : el("p", { class: "muted small", text: "No changes in the last 7 days." }));
+  }
+
   /* ---------- data ---------- */
   async function load() {
     const res = await fetch("/api/snapshot.json", { credentials: "same-origin" });
@@ -234,10 +305,12 @@
     }
     S.byRank = S.data.items.slice().sort((a, b) => a.rank - b.rank);
     S.buyers = groupBuyers();
+    buildDaily();
     $("asof").textContent = "As of " + fmtDate(S.data.generated_at);
     $("loading").classList.add("hidden");
     buildFilters();
     buildTabs();
+    renderDailyStrip();
     render();
     buildBuyers();
     buildKpis();
@@ -466,7 +539,7 @@
       option("inferred", "Unverified"), option("none", "No buyer found"));
     for (const id of FILTER_IDS) $(id).addEventListener("input", () => { S.page = 1; S.sel = -1; render(); });
     $("f-state").addEventListener("input", (e) => setState(e.target.value));
-    const reset = () => { for (const id of FILTER_IDS) $(id).value = ""; setState(""); };
+    const reset = () => { for (const id of FILTER_IDS) $(id).value = ""; S.dailyFilter = ""; renderDailyStrip(); setState(""); };
     $("f-reset").addEventListener("click", reset);
     $("empty-reset").addEventListener("click", reset);
     $("mode-brief").addEventListener("click", () => setMode("brief"));
@@ -508,9 +581,10 @@
     return S.data.items.filter((r) => (S.tab === "all" || r.lists.includes(S.tab))
       && (!S.state || r.state === S.state) && careMatch(r, care)
       && (!stage || r.stage === stage) && (!bg || r.buyer_group === bg)
+      && (!S.dailyFilter || dailyKind(r) === S.dailyFilter)
       && (!q || [r.property, r.city, r.state, STATES[r.state], r.buyer].join(" ").toLowerCase().includes(q)));
   }
-  const filtersActive = () => FILTER_IDS.some((id) => $(id).value) || !!S.state;
+  const filtersActive = () => FILTER_IDS.some((id) => $(id).value) || !!S.state || !!S.dailyFilter;
 
   /* ---------- tabs ---------- */
   function selectTab(key) { S.tab = key; S.page = 1; S.sel = -1; S.sort = { key: "rank", dir: 1 }; buildTabs(); render(); }
@@ -542,6 +616,7 @@
     { key: "care", label: "Care" },
     { key: "stage", label: "Stage", sort: (r) => STAGES.indexOf(r.stage) },
     { key: "buyer", label: "Buyer", sort: (r) => r.buyer || "~" },
+    { key: "today", label: "Today", sort: (r) => dailyKind(r) },
     { key: "score", label: "Score", sort: (r) => r.score ?? 0, num: true },
     { key: "contact", label: "Phone", sort: (r) => (r.contact || {}).phone || "~" },
   ];
@@ -564,6 +639,7 @@
       case "units": return el("td", { class: "num" }, size(r) != null ? fmtInt(size(r)) : nf());
       case "stage": return el("td", {}, stageMark(r));
       case "buyer": return el("td", { class: "buyer" }, buyerChip(r.buyer_group), r.buyer ? buyerNameEl(r) : null);
+      case "today": return el("td", {}, dailyChip(r) || (S.daily ? el("span", { class: "muted", text: "–" }) : null));
       case "score": return el("td", { class: "num strong", text: r.score == null ? "–" : String(Math.round(r.score)) });
       case "contact": return el("td", { class: "nowrap" }, telLink(r));
       default: return el("td");
@@ -590,13 +666,13 @@
     return el("article", p,
       el("span", { class: "rank", text: String(listRank(r)) }),
       el("div", { class: "main" }, el("h3", { text: r.property || "" }), metaLine(r), el("p", { class: "why", text: whyShort(r) })),
-      el("div", { class: "status" }, stageMark(r), buyerLine(r)),
+      el("div", { class: "status" }, stageMark(r), buyerLine(r), dailyChip(r)),
       scoreMark(r.score));
   }
   function render() {
     if (!S.data) return;
     const isC = S.tab === "C", table = isC || S.mode === "table";
-    const cols = isC ? C_COLS : LEAD_COLS;
+    const cols = isC ? C_COLS : LEAD_COLS.filter((c) => c.key !== "today" || S.daily);
     let rows = filtered();
     const col = cols.find((c) => c.key === S.sort.key && c.sort) || cols[0];
     rows = rows.slice().sort((a, b) => { const x = col.sort(a), y = col.sort(b); return (x > y ? 1 : x < y ? -1 : 0) * S.sort.dir; });
@@ -1037,6 +1113,8 @@
 
     // 1. why this lead
     const sections = [section(1, "Why this lead", el("p", { class: "why-big", text: whyThisLead(r) }))];
+
+    const daily = dailySection(r); if (daily) sections.push(daily);
 
     // 2. what is happening: signals, dates, and every source link
     const facts = [];
