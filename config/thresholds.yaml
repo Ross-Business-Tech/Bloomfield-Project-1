@@ -115,3 +115,7 @@ scoring:            # docs/BUILD_SPEC.md step 7
     top_n: 20
     per_buyer: 2
   buyer_mega_platform_facilities: 100   # ASSUMPTION (Nov 11): buyer (or parent) with more homes = flag buyer_mega_platform, size_fit 0
+
+daily_check:        # src/pipeline/daily3.py (the scheduled daily check)
+  top20_hold_score_move: 1.0       # ASSUMPTION (Nov 13): a top-20 lead whose score moves this many points or more
+                                   # HOLDS the run for a person. Daily date-based rescoring moves a score by about 0.05.
