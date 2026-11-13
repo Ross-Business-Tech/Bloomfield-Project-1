@@ -59,3 +59,9 @@ Tests pass, sample run works, row counts reported, no file outside your ownershi
   "Closed / sold (portfolio, inferred)". List A holds only buyers named property by property; inferred leads count
   under "other". Named and inferred buyers are always shown as two counts, never one percentage. The score does not
   change. This is a display rule in `src/web/snapshot.py`; nothing is rewritten in the database.
+- **Duplicate merge rule (Nov 12, 2026).** A record without a Medicare number is merged into a Medicare-enrolled
+  facility only when ZIP code and street number match, the street name matches, AND either the normalized names are
+  at least 85% similar or both records name the same operator / licensee. Never when names and operators both
+  differ, and never on the address alone when an operator is unknown. Every decision is written with its reason to
+  `output/dedupe_decisions_<date>.csv`; `python -m src.enrich --step dedupe --dry-run` decides without writing to
+  the database.

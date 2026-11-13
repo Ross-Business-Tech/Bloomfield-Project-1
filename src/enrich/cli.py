@@ -30,15 +30,22 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--step", action="append", choices=ORDER + ONE_OFF, help="run only this step (repeatable)")
     ap.add_argument("--limit", type=int, default=None, help="process only the first N source rows per step")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="only with `--step dedupe` alone: decide and log every merge, write nothing to the database")
     args = ap.parse_args(argv)
     steps = [s for s in ONE_OFF + ORDER if (s in args.step if args.step else s in ORDER)]
+    if args.dry_run and steps != ["dedupe"]:
+        ap.error("--dry-run works only with `--step dedupe` on its own")
     with connect() as conn:
+        if args.dry_run:                       # belt and braces: the session cannot write
+            conn.execute("set session characteristics as transaction read only")
+            conn.commit()
         try:
             guard_size(conn, "start")
             for name in steps:
                 t0 = time.time()
                 print(f"== {name}", flush=True)
-                result = STEPS[name](conn, args.limit)
+                result = STEPS[name](conn, args.limit, apply=False) if args.dry_run else STEPS[name](conn, args.limit)
                 for k, v in result.items():
                     if isinstance(v, list):          # long lists (merge report) one per line
                         print(f"  {k}: {len(v)}", flush=True)
