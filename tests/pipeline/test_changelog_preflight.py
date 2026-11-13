@@ -208,7 +208,7 @@ def test_page_and_workflow_wiring():
     wf = (Path(snapshot.__file__).parents[2] / ".github" / "workflows" / "daily3.yml").read_text()
     live = "\n".join(ln for ln in wf.splitlines() if not ln.strip().startswith("#"))
     assert "workflow_dispatch" in live and "EXCLUDE_FACILITIES_GZ_B64" in live and "src.pipeline.preflight" in live
-    assert 'cron: "0 11 * * *"' in wf                              # 6 am Eastern (winter); on or commented out
+    assert '    - cron: "0 11 * * *"' in live and "ref: development" in live   # daily at 6 am Eastern (winter)
     # public-repo log rule: nothing but the checked summary is printed, and no data artifact is uploaded
     assert "upload-artifact" not in wf and "src.pipeline.log_check" in live
     assert 'python -m src.pipeline.daily3 $args > "$LOG" 2>&1' in live and 'cat "$LOG"' not in live
@@ -255,7 +255,7 @@ def test_cloud_inputs_round_trip_without_printing_values(tmp_path, monkeypatch):
     blob = ci.pack(slim.encode())
     env = {"EXCLUDE_FACILITIES_GZ_B64": ci.pack(b"# list\nf-1\n"), "PRIVATE_TERMS_GZ_B64": ci.pack(b"zzterm\n"),
            "CASE_LABELS_GZ_B64": ci.pack(b"stg_court_case_id,senior_housing\n1,yes\n"),
-           "WATCHLIST_GZ_B64_1": blob[:20], "WATCHLIST_GZ_B64_2": blob[20:], "WATCHLIST_GZ_B64_3": "-",
+           "WATCHLIST_GZ_B64_1": blob[:20], "WATCHLIST_GZ_B64_2": blob[20:], "WATCHLIST_GZ_B64_3": ci.UNUSED, "WATCHLIST_GZ_B64_4": "-",
            "WATCHLIST_NAME": "INTERNAL_watch_2026-11-11.csv"}
     paths = ci.restore(tmp_path / "priv", env)
     assert set(paths) == {"EXCLUDE_FACILITIES_PATH", "PRIVATE_TERMS_PATH", "FAMILIES_CLASSIFICATION_CSV", "WATCHLIST_FILE"}
