@@ -20,21 +20,24 @@ def laptop_files(tmp_path, monkeypatch):
     monkeypatch.setattr(preflight, "EXCLUDE_FILE", tmp_path / "exclude.txt")
     monkeypatch.setattr(preflight, "TERMS_FILE", tmp_path / "terms.txt")
     monkeypatch.setattr(preflight, "ENV_FILE", tmp_path / ".env")
-    for k in ("EXCLUDE_FACILITIES", "EXCLUDE_FACILITIES_PATH", "PRIVATE_TERMS_PATH", "RENDER_API_KEY"):
+    monkeypatch.setattr(preflight, "LABELS_FILE", tmp_path / "labels.csv")
+    for k in ("EXCLUDE_FACILITIES", "EXCLUDE_FACILITIES_PATH", "PRIVATE_TERMS_PATH", "RENDER_API_KEY", "FAMILIES_CLASSIFICATION_CSV"):
         monkeypatch.delenv(k, raising=False)
     return tmp_path
 
 
 def full_env(tmp_path) -> dict:
     (tmp_path / "t.txt").write_text("# private\nzzterm\n!allowed phrase\n")
-    return {"EXCLUDE_FACILITIES": "id-1\nid-2", "PRIVATE_TERMS_PATH": str(tmp_path / "t.txt"), "RENDER_API_KEY": "k" * 12}
+    (tmp_path / "l.csv").write_text("stg_court_case_id,senior_housing\n1,yes\n2,no\n")
+    return {"EXCLUDE_FACILITIES": "id-1\nid-2", "PRIVATE_TERMS_PATH": str(tmp_path / "t.txt"), "RENDER_API_KEY": "k" * 12,
+            "FAMILIES_CLASSIFICATION_CSV": str(tmp_path / "l.csv")}
 
 
 def test_preflight_passes_only_when_all_three_inputs_are_present(laptop_files):
     env = full_env(laptop_files)
     assert preflight.problems(env) == []
-    assert [r["name"] for r in preflight.check({}) if not r["pass"]] == ["exclusion_list", "private_terms", "render_key"]
-    for missing in ("EXCLUDE_FACILITIES", "PRIVATE_TERMS_PATH", "RENDER_API_KEY"):
+    assert [r["name"] for r in preflight.check({}) if not r["pass"]] == ["case_labels", "exclusion_list", "private_terms", "render_key"]
+    for missing in ("EXCLUDE_FACILITIES", "PRIVATE_TERMS_PATH", "RENDER_API_KEY", "FAMILIES_CLASSIFICATION_CSV"):
         assert len(preflight.problems({k: v for k, v in env.items() if k != missing})) == 1
     assert len(preflight.problems(dict(env, EXCLUDE_FACILITIES="  \n"))) == 1            # present but empty
     assert len(preflight.problems(dict(env, RENDER_API_KEY=" "))) == 1
@@ -59,6 +62,7 @@ def test_a_run_without_the_exclusion_list_cannot_publish(laptop_files, monkeypat
     env = full_env(laptop_files)
     monkeypatch.setenv("PRIVATE_TERMS_PATH", env["PRIVATE_TERMS_PATH"])
     monkeypatch.setenv("RENDER_API_KEY", env["RENDER_API_KEY"])              # everything is there EXCEPT the list
+    monkeypatch.setenv("FAMILIES_CLASSIFICATION_CSV", env["FAMILIES_CLASSIFICATION_CSV"])
     calls = []
     monkeypatch.setattr(publish, "main", lambda argv=None: calls.append(("publish", argv)) or 0)
     monkeypatch.setattr(publish, "build", lambda *a, **k: calls.append(("build", a)) or (None, {}))
@@ -76,6 +80,7 @@ def test_publish_command_refuses_to_upload_without_the_exclusion_list(laptop_fil
     env = full_env(laptop_files)
     monkeypatch.setenv("PRIVATE_TERMS_PATH", env["PRIVATE_TERMS_PATH"])
     monkeypatch.setenv("RENDER_API_KEY", env["RENDER_API_KEY"])
+    monkeypatch.setenv("FAMILIES_CLASSIFICATION_CSV", env["FAMILIES_CLASSIFICATION_CSV"])
     built = []
     monkeypatch.setattr(publish, "build", lambda *a, **k: built.append(1) or (None, {}))
     monkeypatch.setattr(publish, "client", lambda key: (_ for _ in ()).throw(AssertionError("no upload")))
@@ -201,6 +206,62 @@ def test_page_and_workflow_wiring():
     assert ".stage > span:last-child { min-width: 0; overflow-wrap: anywhere; }" in css                # long stage text wraps
     assert "white-space: nowrap" not in css.split(".stage {")[1].split("}")[0]
     wf = (Path(snapshot.__file__).parents[2] / ".github" / "workflows" / "daily3.yml").read_text()
-    live = [ln for ln in wf.splitlines() if not ln.strip().startswith("#")]
-    assert any("workflow_dispatch" in ln for ln in live) and not any("cron" in ln or "schedule" in ln for ln in live)
-    assert '#   - cron: "0 11 * * *"' in wf and "EXCLUDE_FACILITIES" in wf
+    live = "\n".join(ln for ln in wf.splitlines() if not ln.strip().startswith("#"))
+    assert "workflow_dispatch" in live and "EXCLUDE_FACILITIES_GZ_B64" in live and "src.pipeline.preflight" in live
+    assert '    - cron: "0 11 * * *"' in live and "ref: development" in live   # daily at 6 am Eastern (winter)
+    # public-repo log rule: nothing but the checked summary is printed, and no data artifact is uploaded
+    assert "upload-artifact" not in wf and "src.pipeline.log_check" in live
+    assert 'python -m src.pipeline.daily3 $args > "$LOG" 2>&1' in live and 'cat "$LOG"' not in live
+    assert "--live --publish --publish-changelog" in live and "--dry-run --strict" in live
+
+
+# ── public-repo log rule and cloud inputs ───────────────────────────────────────────────────────────────────────
+def test_log_check_refuses_names_addresses_terms_and_ids():
+    from src.pipeline import log_check
+    names = log_check.names_from({"items": [{"property": "Oak Manor Nursing Home", "buyer": "Acme Holdings LLC"}, {"property": "Elm"}],
+                                  "explore": [{"property": "Birch Court Assisted Living", "buyer": None}], "list_c": [{"buyer": "Repeat Buyer Group"}]})
+    assert names == {"oak manor nursing home", "acme holdings llc", "birch court assisted living", "repeat buyer group"}
+    ok = "   PASS  leak_scan      clean\nChange log: Daily check #2; leads 484 (+0 vs Nov 11, 2026); buyers 31 named, 176 inferred\nPublish: NO (dry_run)"
+    assert not any(log_check.problems(ok, names, ["zzterm"], ["id-1"]).values())
+    assert log_check.problems("finding  OAK MANOR NURSING HOME sale order", names, [], [])["names"] == 1
+    assert log_check.problems("buyer=Acme Holdings LLC", names, [], [])["names"] == 1
+    assert log_check.problems("x zzTerm y", names, ["zzterm"], [])["terms"] == 1
+    assert log_check.problems("lead id-1 dropped", names, [], ["id-1"])["ids"] == 1
+    assert log_check.problems("at 120 North Main Street, Springvale", names, [], [])["addresses"] == 1
+
+
+def test_log_check_command_withholds_and_never_repeats_the_match(tmp_path, laptop_files, capsys):
+    from src.pipeline import log_check
+    snap = tmp_path / "s.json"
+    snap.write_text('{"items": [{"property": "Oak Manor Nursing Home", "buyer": null}]}')
+    good, bad = tmp_path / "good.txt", tmp_path / "bad.txt"
+    good.write_text("   PASS  tests          362 passed\nPublish: NO (dry_run)\n")
+    bad.write_text("   new docket for Oak Manor Nursing Home\n")
+    assert log_check.main([str(good), "--snapshot", str(snap)]) == 0
+    assert log_check.main([str(bad), "--snapshot", str(snap)]) == 3
+    out = capsys.readouterr().out
+    assert "WITHHELD" in out and "oak manor" not in out.lower()
+
+
+def test_cloud_inputs_round_trip_without_printing_values(tmp_path, monkeypatch):
+    from src.pipeline import cloud_inputs as ci
+    monkeypatch.setattr(ci, "OUTPUT_DIR", tmp_path / "output")
+    full = tmp_path / "watch.csv"
+    full.write_text("property,city,state,flags,source_urls,score,secret_note\n"
+                    "Oak Home,X,PA,{},https://a.example/1,10,internal only\n"
+                    "Private Home,Y,NY,{licensed_private},https://a.example/2,9,internal only\n")
+    slim = ci.slim_watch(full).decode()
+    assert "Oak Home" in slim and "Private Home" not in slim and "internal only" not in slim     # public rows, site columns
+    blob = ci.pack(slim.encode())
+    env = {"EXCLUDE_FACILITIES_GZ_B64": ci.pack(b"# list\nf-1\n"), "PRIVATE_TERMS_GZ_B64": ci.pack(b"zzterm\n"),
+           "CASE_LABELS_GZ_B64": ci.pack(b"stg_court_case_id,senior_housing\n1,yes\n"),
+           "WATCHLIST_GZ_B64_1": blob[:20], "WATCHLIST_GZ_B64_2": blob[20:], "WATCHLIST_GZ_B64_3": ci.UNUSED, "WATCHLIST_GZ_B64_4": "-",
+           "WATCHLIST_NAME": "INTERNAL_watch_2026-11-11.csv"}
+    paths = ci.restore(tmp_path / "priv", env)
+    assert set(paths) == {"EXCLUDE_FACILITIES_PATH", "PRIVATE_TERMS_PATH", "FAMILIES_CLASSIFICATION_CSV", "WATCHLIST_FILE"}
+    assert (tmp_path / "output" / "INTERNAL_watch_2026-11-11.csv").read_text() == slim
+    assert preflight.exclusion_ids({"EXCLUDE_FACILITIES_PATH": paths["EXCLUDE_FACILITIES_PATH"]})[0] == ["f-1"]
+    assert preflight.case_labels({"FAMILIES_CLASSIFICATION_CSV": paths["FAMILIES_CLASSIFICATION_CSV"]})[0] == 1
+    with pytest.raises(SystemExit):
+        ci.restore(tmp_path / "priv", dict(env, WATCHLIST_NAME="../../etc/x.csv"))
+    assert ci.restore(tmp_path / "none", {}) == {}                 # nothing set: nothing written; pre-flight then fails

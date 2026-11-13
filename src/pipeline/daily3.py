@@ -830,13 +830,11 @@ def portability() -> list[str]:
     from src.pipeline import preflight
     out = [f"pre-flight: {p}" for p in preflight.problems()]
     out += [
-        "exclusion list, term list and Render key: read from the environment (EXCLUDE_FACILITIES, PRIVATE_TERMS_PATH, "
-        "RENDER_API_KEY) or the laptop files; a publish run stops before any work when one is missing or empty",
-        "output/INTERNAL_watch_*.csv: the snapshot's Explore (watch list) reads the latest CSV; a cloud run must run "
-        "`python -m src.score` export in the same job first",
-        "output/site_snapshot.uploaded.b64: baseline for the first live run only (afterwards raw.refresh_runs.state)",
-        "output/changelog_baseline_state.json: the Nov 11 list the FIRST change log is compared with (laptop only; "
-        "without it the first check compares with the last published list)",
+        "exclusion list, term list, court-case labels and Render key: read from the environment or the laptop files; "
+        "a publish run stops before any work when one is missing or empty",
+        "watch list (output/INTERNAL_watch_*.csv) and the Nov 11 comparison list: restored from repository secrets "
+        "in CI (python -m src.pipeline.cloud_inputs); a live run writes a newer watch list itself",
+        "last published list: read from the run log (raw.refresh_runs); the laptop file is only a fallback",
     ]
     return out
 
@@ -856,6 +854,8 @@ def main(argv=None) -> int:
     ap.add_argument("--roundup-unverified", action="store_true",
                     help="apply the roundup rule (buyer from a roundup article -> Unverified, leaves List A). "
                          "OFF by default: it changes the published counts (Nov 13 dry run: 3 shown buyers affected)")
+    ap.add_argument("--strict", action="store_true",
+                    help="dry run: exit 1 when a gate fails (a dry run otherwise always exits 0)")
     ap.add_argument("--publish-changelog", action="store_true",
                     help="include the change log in the published snapshot. OFF by default: the change log is built "
                          "and written to the run output, but the site does not show it")
@@ -1040,7 +1040,11 @@ def main(argv=None) -> int:
     for p in portability():
         log(f"   - {p}")
     log("Written: " + ", ".join(written))
-    return 0 if all_pass or a.dry_run else 1
+    if a.dry_run:
+        return 1 if (a.strict and not all_pass) else 0
+    if a.publish and status != "published":             # held or failed: the job fails, so the owner gets an email
+        return 1
+    return 0 if all_pass else 1
 
 
 def record_publish() -> int:

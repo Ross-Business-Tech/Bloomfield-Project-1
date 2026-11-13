@@ -1,5 +1,5 @@
 -- Nightly refresh (daily3, Nov 12, 2026): per-source cursors and a run log. Additive only; safe to re-run.
--- NOT APPLIED YET: written for review. `python -m src.pipeline.daily3 --dry-run` works without it (JSON files).
+-- Applied Nov 12, 2026 (three new tables; nothing existing is changed).
 
 -- Where each source left off. cursor_key: 'feed' (RSS), 'search' (CourtListener new dockets),
 -- 'docket:<courtlistener id>' (follow-through of one docket). queue: work that did not fit the run's budget.
