@@ -32,6 +32,7 @@ from src.common.config import OUTPUT_DIR, PROJECT_ROOT
 
 PART = 44_000                      # characters per secret (GitHub limit: 48 KB)
 MAX_WATCH_PARTS = 12
+UNUSED = "WATCHLIST_PART_NOT_USED"
 WATCH_COLS = ["property", "city", "state", "care_types", "units", "beds", "distress_type", "stage", "buyer",
               "buyer_source_url", "score", "flags", "source_urls"]          # what src.web.snapshot.watch_rows reads
 FILES = {"EXCLUDE_FACILITIES_GZ_B64": ("eval/private/exclude_facilities_PRIVATE.txt", "EXCLUDE_FACILITIES_PATH"),
@@ -69,8 +70,9 @@ def payloads() -> dict[str, str]:
     parts = [blob[i:i + PART] for i in range(0, len(blob), PART)]
     if len(parts) > MAX_WATCH_PARTS:
         raise SystemExit(f"watch list needs {len(parts)} parts (limit {MAX_WATCH_PARTS})")
-    for i in range(MAX_WATCH_PARTS):                    # unused parts are set to "-" so an old longer list cannot linger
-        out[f"WATCHLIST_GZ_B64_{i + 1}"] = parts[i] if i < len(parts) else "-"
+    for i in range(MAX_WATCH_PARTS):                    # unused parts get a placeholder so an old longer list cannot
+        out[f"WATCHLIST_GZ_B64_{i + 1}"] = parts[i] if i < len(parts) else UNUSED     # linger (GitHub masks secret
+                                                                                      # values in logs: never a "-")
     out["WATCHLIST_NAME"] = watch.name
     return out
 
@@ -86,7 +88,7 @@ def restore(target: Path, env=None) -> dict[str, str]:
             p.write_bytes(unpack(env[name]))
             paths[var] = str(p)
     blob = "".join(env.get(f"WATCHLIST_GZ_B64_{i + 1}") or "" for i in range(MAX_WATCH_PARTS)
-                   if (env.get(f"WATCHLIST_GZ_B64_{i + 1}") or "-").strip() != "-")
+                   if (env.get(f"WATCHLIST_GZ_B64_{i + 1}") or UNUSED).strip() not in (UNUSED, "-"))
     if blob:
         name = (env.get("WATCHLIST_NAME") or "INTERNAL_watch_2026-11-11.csv").strip()
         if not (name.startswith("INTERNAL_watch_") and name.endswith(".csv") and "/" not in name):

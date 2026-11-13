@@ -1,7 +1,9 @@
 # Daily check of Deal Radar (src/pipeline/daily3.py): the FREE alternative to a Render cron job.
 #
-# Start: by hand (Actions > daily3 > Run workflow; "dry-run" changes nothing, "live" may publish). The daily schedule
-# below is written but COMMENTED OUT until a cloud dry run has passed.
+# Start: every day at 11:00 UTC (a live run), or by hand (Actions > daily3 > Run workflow; "dry-run" changes
+# nothing, "live" may publish). Enabled Nov 12, 2026 after a cloud dry run passed. GitHub runs a schedule only from
+# the copy of this file on the repository's DEFAULT branch; the job itself always checks out `development`, the
+# branch the site is deployed from, so the code that builds the data is the code that shows it.
 #
 # AUTO-PUBLISH RULE (live): the run publishes only when every gate passes AND the top-20 order is unchanged AND the
 # lead count is within 10% of the last published list. Otherwise it HOLDS (nothing is published) and the job FAILS,
@@ -28,8 +30,8 @@
 name: daily3
 
 on:
-  # schedule:
-  #   - cron: "0 11 * * *"   # 11:00 UTC = 6:00 am Eastern in winter (EST), 7:00 am in summer (EDT). NOT ENABLED.
+  schedule:
+    - cron: "0 11 * * *"     # 11:00 UTC = 6:00 am Eastern in winter (EST), 7:00 am in summer (EDT)
   workflow_dispatch:
     inputs:
       mode:
@@ -52,6 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: development
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
