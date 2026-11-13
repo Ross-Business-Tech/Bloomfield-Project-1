@@ -978,12 +978,49 @@ def step_extraction(conn, limit=None) -> dict:
 
 # ======================================================================= step 7b: duplicate merge (Gate 2)
 
+MERGE_NAME_MIN = 85          # normalized-name similarity (token_set_ratio, 0-100) that counts as "the same name"
+MERGE_STREET_MIN = 80        # street-name similarity after abbreviations are expanded ("W 190TH ST" = "WEST 190TH STREET")
+
+
+def same_operator(a, b) -> bool:
+    """True only when BOTH records name an operator / licensee and at least one of them is the same party.
+    Unknown on either side is never "the same operator"."""
+    ka = {party_key(x) for x in (a or []) if party_key(x)}
+    kb = {party_key(x) for x in (b or []) if party_key(x)}
+    return any(x == y or (min(len(x), len(y)) >= 8 and (x in y or y in x)) for x in ka for y in kb)
+
+
+def merge_decision(extra: dict, cms: dict) -> dict:
+    """May `extra` (a record without a Medicare number) be merged into the CMS facility `cms`? Both already share
+    ZIP + street number. Rule (Nov 12, 2026, after 29 of 42 merges turned out to be different businesses at one
+    address): the street name must match, AND (the name is the same OR the operator is the same). Never a merge when
+    the names AND the operators both differ, or when the name differs and an operator is unknown."""
+    from src.common.normalize import normalize_street
+    name_ratio = fuzz.token_set_ratio(normalize_name(extra["name"]), normalize_name(cms["name"]))
+    strip = lambda s: re.sub(r"^\s*\d+[a-z]?\b\s*", "", normalize_street(s))      # noqa: E731  street without its number
+    sa, sb = strip(extra.get("street")), strip(cms.get("street"))
+    street_ratio = fuzz.token_set_ratio(sa, sb) if sa and sb else 0
+    op_a, op_b = extra.get("operators") or [], cms.get("operators") or []
+    same_op = same_operator(op_a, op_b)
+    if street_ratio < MERGE_STREET_MIN:
+        merge, reason = False, "blocked:different_street_name"
+    elif name_ratio >= MERGE_NAME_MIN:
+        merge, reason = True, "merge:same_name"
+    elif same_op:
+        merge, reason = True, "merge:same_operator"
+    elif op_a and op_b:
+        merge, reason = False, "blocked:name_and_operator_differ"
+    else:
+        merge, reason = False, "blocked:name_differs_operator_unknown"
+    return {"merge": merge, "reason": reason, "name_ratio": round(name_ratio, 1), "street_ratio": round(street_ratio, 1),
+            "same_operator": same_op}
+
+
 def plan_merges(facs: list[dict]) -> list[dict]:
     """Facilities added beyond the CMS enrollment list that share street number + zip5 with a CMS-enrollment
-    facility. Each extra goes to one survivor: the CMS facility with the most similar name when several share
-    the address. Returns [{extra, survivor, extra_name, survivor_name, name_ratio, n_candidates}]."""
-    import re
-
+    facility, each with a decision (merge_decision). An extra goes to at most one survivor: among the CMS facilities
+    at that address, one it may merge into (most similar name first). Returns one row per extra:
+    [{extra, survivor, extra_name, survivor_name, name_ratio, street_ratio, same_operator, n_candidates, merge, reason}]."""
     def street_number(street):
         # digits only (Gate 2 rule): '801W 190TH ST' and '801 WEST 190TH ST' share number 801
         m = re.match(r"\s*(\d+)", street or "")
@@ -1003,33 +1040,65 @@ def plan_merges(facs: list[dict]) -> list[dict]:
         cands = cms.get((num, z)) if num and z else None
         if not cands:
             continue
-        scored = sorted(((fuzz.token_set_ratio(normalize_name(f["name"]), normalize_name(c["name"])), c["facility_id"], c)
-                         for c in cands), key=lambda t: (-t[0], t[1]))
-        ratio, _, best = scored[0]
+        scored = sorted(((merge_decision(f, c), c) for c in cands),
+                        key=lambda t: (not t[0]["merge"], -t[0]["name_ratio"], t[1]["facility_id"]))
+        d, best = scored[0]
         plan.append({"extra": f["facility_id"], "survivor": best["facility_id"], "extra_name": f["name"],
-                     "survivor_name": best["name"], "name_ratio": round(ratio, 1), "n_candidates": len(cands)})
+                     "survivor_name": best["name"], "n_candidates": len(cands), **d})
     return plan
 
 
-def step_dedupe(conn, limit=None) -> dict:
+def dedupe_plan(conn) -> list[dict]:
+    """Every merge decision for the current database (read only)."""
     facs = [dict(r) for r in conn.execute("""
         select f.facility_id::text, f.canonical_name as name, f.street, f.zip5,
                exists (select 1 from core.facility_xref x where x.facility_id = f.facility_id
-                       and x.source_id = 'cms_snf_enrollment') as is_enrollment
+                       and x.source_id = 'cms_snf_enrollment') as is_enrollment,
+               coalesce((select array_agg(distinct o.name) from core.facility_role fr
+                         join core.organization o on o.org_id = fr.org_id
+                         where fr.facility_id = f.facility_id and fr.role in ('operator', 'licensee')
+                           and fr.end_date is null), '{}') as operators
         from core.facility f""").fetchall()]
     plan = plan_merges(facs)
     # never cascade-delete Wave 3 rows: an extra that already has signals / a lead is left for the orchestrator
-    blocked = {r["facility_id"] for r in conn.execute(
+    held = {r["facility_id"] for r in conn.execute(
         "select facility_id::text from core.signal union select facility_id::text from app.lead").fetchall()}
-    todo = [m for m in plan if m["extra"] not in blocked]
+    for m in plan:
+        if m["merge"] and m["extra"] in held:
+            m["merge"], m["reason"] = False, "blocked:has_signal_or_lead"
+    return plan
+
+
+def write_merge_log(plan: list[dict], applied: bool) -> Path:
+    """Every decision with its reason: output/dedupe_decisions_<date>.csv (gitignored; names stay off the console)."""
+    from src.common.config import OUTPUT_DIR
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / f"dedupe_decisions_{date.today():%Y-%m-%d}.csv"
+    cols = ["decision", "reason", "applied", "extra", "survivor", "extra_name", "survivor_name", "name_ratio",
+            "street_ratio", "same_operator", "n_candidates"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for m in plan:
+            w.writerow(dict(m, decision="merge" if m["merge"] else "blocked", applied=bool(applied and m["merge"])))
+    return path
+
+
+def step_dedupe(conn, limit=None, apply: bool = True) -> dict:
+    """Merge duplicate records (see merge_decision). apply=False: decide and log only, nothing is written to the
+    database (`python -m src.enrich --step dedupe --dry-run`)."""
+    plan = dedupe_plan(conn)
+    todo = [m for m in plan if m["merge"]]
     absorb = Counter(m["survivor"] for m in todo)
-    out = {"merged": 0, "blocked_by_signal_or_lead": len(plan) - len(todo),
-           "dissimilar_names": [(m["extra_name"], m["survivor_name"], m["name_ratio"]) for m in todo if m["name_ratio"] < 60],
+    log_path = write_merge_log(plan, apply)
+    out = {"merged": 0, "proposed": len(todo), "blocked": len(plan) - len(todo), "dry_run": not apply,
+           "decisions": dict(Counter(m["reason"] for m in plan)), "decision_log": str(log_path),
+           "blocked_by_signal_or_lead": sum(1 for m in plan if m["reason"] == "blocked:has_signal_or_lead"),
            "multi_absorb": [(next(m["survivor_name"] for m in todo if m["survivor"] == sid),
                              [m["extra_name"] for m in todo if m["survivor"] == sid]) for sid, n in absorb.items() if n >= 2],
            "extra_with_several_cms_candidates": [(m["extra_name"], m["survivor_name"], m["n_candidates"])
                                                  for m in todo if m["n_candidates"] > 1]}
-    if not todo:
+    if not todo or not apply:
         return out
     with conn.cursor() as cur:
         cur.execute("create temp table _merge (extra uuid primary key, survivor uuid not null) on commit drop")
