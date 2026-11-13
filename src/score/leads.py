@@ -106,15 +106,24 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
     # Public sources only (a licensed tag never sets it); a hand-check override wins; closed beats approved.
     ov = fac.get("override") or {}
     sale = ov.get("sale_status")
-    if not sale:
-        done = [s for s in current if s.sale_status and str(s.source_url).startswith(("http://", "https://"))]
-        if done:
-            top = max(done, key=lambda s: (s.sale_status == "closed", s.sale_date.toordinal() if s.sale_date else 0))
-            when = top.sale_date.isoformat() if top.sale_date else None
-            sale = {"status": top.sale_status, "date": when[:7] if when and top.sale_month_only else when,
-                    "source_url": top.source_url, "basis": "court" if top.category == "legal" else "news report"}
-            if top.sale_portfolio:
-                sale["portfolio"] = True          # portfolio-level fact, not checked for this home
+    sourced = None
+    done = [s for s in current if s.sale_status and str(s.source_url).startswith(("http://", "https://"))]
+    if done:
+        top = max(done, key=lambda s: (s.sale_status == "closed", s.sale_date.toordinal() if s.sale_date else 0))
+        when = top.sale_date.isoformat() if top.sale_date else None
+        sourced = {"status": top.sale_status, "date": when[:7] if when and top.sale_month_only else when,
+                   "source_url": top.source_url, "basis": "court" if top.category == "legal" else "news report"}
+        if top.sale_portfolio:
+            sourced["portfolio"] = True          # portfolio-level fact, not checked for this home
+    superseded = False
+    if sale and sourced:
+        # Nov 12 (nightly refresh): a hand-check override wins, unless a public source dated AFTER the override reports
+        # a sale step further along (approved -> closed). Never a downgrade; the change is flagged unreviewed.
+        superseded = rules.sale_supersedes_override(sourced, sale, ov.get("date"))
+        if superseded:
+            sale = sourced
+    elif not sale:
+        sale = sourced
     sale_day = rules.stated_date(sale["date"] if len(str(sale["date"])) > 7 else str(sale["date"]) + "-28") \
         if sale and sale.get("date") else None
     sale_old = bool(sale and sale["status"] == "closed" and sale_day
@@ -185,6 +194,8 @@ def score_facility(fac: dict, sigs: list[Sig], buyer: Buyer, today: date,
         flags.append("sale_" + sale["status"])
         if sale.get("portfolio"):
             flags.append("portfolio_sale_inferred")
+    if superseded:
+        flags += ["override_superseded", "unreviewed_change"]
     for f in ov.get("flags") or []:
         if f not in flags:
             flags.append(f)

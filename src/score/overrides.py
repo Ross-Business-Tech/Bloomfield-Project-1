@@ -55,6 +55,7 @@ def apply(conn, sigs: list, hints: list, fids=None) -> tuple[list, list, dict]:
         stats["applied"] += 1
         when = date.fromisoformat(str(o["date"]))
         extra = FAC.setdefault(fid, {"flags": []})
+        extra["date"] = when.isoformat()        # a public source dated after this may supersede the sale status
         if o.get("drop_family"):
             sigs = [s for s in sigs if not (s.facility_id == fid and s.family_id is not None)]
             hints = [h for h in hints if not (h.facility_id == fid and (h.family_id is not None or h.origin == "court_sale"))]

@@ -103,10 +103,10 @@ def unwrap(x: dict, k: str) -> dict:
     return x.get(k) or x
 
 
-def build() -> tuple[Path, dict]:
+def build(roundup_unverified: bool = False) -> tuple[Path, dict]:
     from src.web import snapshot
     b64 = OUTPUT_DIR / SECRET_FILE
-    snapshot.main(["--out", str(OUTPUT_DIR / "site_snapshot.json")])
+    snapshot.main(["--out", str(OUTPUT_DIR / "site_snapshot.json")] + (["--roundup-unverified"] if roundup_unverified else []))
     return b64, json.loads(gzip.decompress(base64.b64decode(b64.read_bytes().strip())))
 
 
@@ -114,8 +114,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m src.web.publish", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--confirm", action="store_true", help="really upload and deploy (default: dry run)")
+    ap.add_argument("--roundup-unverified", action="store_true", help="nightly refresh rule (see src.web.snapshot)")
     a = ap.parse_args(argv)
-    b64, snap = build()
+    b64, snap = build(a.roundup_unverified)
     size = b64.stat().st_size
     c = snap.get("counts", {})
     print(f"upload: {b64} {size:,} bytes (limit {MAX_BYTES:,}); generated {snap.get('generated_at')}")

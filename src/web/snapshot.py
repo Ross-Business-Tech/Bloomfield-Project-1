@@ -44,6 +44,8 @@ def buyer_group(r: dict) -> str:
     st, bd = r.get("buyer_status"), r.get("breakdown") or {}
     if "(unnamed)" in (r.get("buyer") or "").lower():          # a placeholder, never a named buyer
         return "candidate" if st in ("candidate", "named") else "inferred"
+    if st == "Unverified":                                      # buyer read from a multi-property roundup article
+        return "inferred"
     if st == "named" and bd.get("buyer_parent_basis") != "brand_match":
         return "confirmed"
     if st == "candidate":
@@ -162,6 +164,8 @@ def other_reason(r: dict) -> str | None:
     if in_list_a(r) or (no_buyer and r.get("stage") not in ("sale", "done")):
         return None
     st = r.get("buyer_status")
+    if st == "Unverified":
+        return "unverified_buyer"          # buyer read from a multi-property roundup article (--roundup-unverified)
     if st == "candidate":
         return "candidate"                 # stalking-horse / proposed bidder
     if st == "stale":
@@ -185,7 +189,7 @@ def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dic
         else:
             reasons[other_reason(r) or "shell_or_closed"] += 1
     return {"leads": len(items_rows), "list_a": a, "list_b": b, "other": sum(reasons.values()),
-            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", "shell_or_closed")},
+            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", "unverified_buyer", "shell_or_closed")},
             "list_c_buyers": len(list_c_rows), "list_c_linked_leads": linked_leads}
 
 
@@ -416,6 +420,23 @@ def write(snap: dict, out: Path) -> None:
             w.writerows(snap[key])
 
 
+def roundup_unverified(conn, rows: list[dict]) -> int:
+    """Nov 12 rule (nightly refresh, opt-in with --roundup-unverified): a buyer whose public source is a multi-property
+    roundup article is shown as 'Unverified' (Unverified group, not List A). Returns how many rows changed."""
+    from src.extract.split import is_roundup
+    urls = sorted({r["buyer_source_url"] for r in rows if r.get("buyer_source_url")})
+    titles = {x["u"]: x["t"] for x in conn.execute("select source_url u, title t from raw.document where source_url = any(%s)",
+                                                   (urls,)).fetchall()} if urls else {}
+    n = 0
+    for r in rows:
+        u = r.get("buyer_source_url")
+        if u and r.get("buyer") not in (None, NF) and r.get("buyer_status") != "Unverified" and is_roundup(u, titles.get(u)):
+            r["buyer_status"] = "Unverified"
+            r["flags"] = list(r.get("flags") or []) + ["buyer_from_roundup"]
+            n += 1
+    return n
+
+
 def fetch_geo(conn) -> dict:
     """{facility_id: {lat, lon, coord_source}} from core.facility_geo; {} before its migration."""
     try:
@@ -441,6 +462,8 @@ def main(argv=None) -> int:
     from src.common.db import connect
     ap = argparse.ArgumentParser(prog="python -m src.web.snapshot")
     ap.add_argument("--out", type=Path, default=OUTPUT_DIR / "site_snapshot.json")
+    ap.add_argument("--roundup-unverified", action="store_true",
+                    help="show buyers read from roundup articles as Unverified (nightly refresh rule; off by default)")
     a = ap.parse_args(argv)
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
@@ -456,6 +479,8 @@ def main(argv=None) -> int:
             r["extra_links"] = more.get(str(r["facility_id"]))
             if {"sale_approved", "sale_closed"} & set(r.get("flags") or []):
                 r["sale_status"] = sale.get(str(r["facility_id"]))
+        if a.roundup_unverified:
+            print(f"roundup rule: {roundup_unverified(conn, rows)} buyers from roundup articles shown as Unverified")
     skip = excluded()
     snap = build(rows, skip, contacts, geo)
     with connect() as conn:

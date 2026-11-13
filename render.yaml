@@ -41,3 +41,32 @@ services:
   #       sync: false
   #     - key: COURTLISTENER_TOKEN
   #       sync: false
+
+  # ── Nightly refresh: deal-radar-daily3 (src/pipeline/daily3.py). PREP ONLY, Nov 12, 2026 ──────────────────────
+  # NOT CREATED ON RENDER, and kept commented out on purpose: a Render Blueprint can sync render.yaml changes on its
+  # own, so a live entry merged into `development` could create this service (and its bill) by itself.
+  # COST DECISION PENDING: Render cron jobs are a PAID feature (no free plan; billed per running minute, at least
+  # $1 / month per cron job, render.com/docs/cronjobs). The free alternative is .github/workflows/daily3.yml
+  # (disabled with `if: false`). Before enabling either: apply supabase/migrations/20261112000100_daily3_refresh.sql
+  # and clear the portability list that `python -m src.pipeline.daily3 --dry-run` prints.
+  # - type: cron
+  #   name: deal-radar-daily3
+  #   runtime: python
+  #   plan: starter
+  #   branch: development
+  #   schedule: "0 7 * * *"            # 07:00 UTC = 2:00 am Eastern (EST); 3:00 am during daylight time
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: python -m src.pipeline.daily3 --live --publish
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: "3.11.9"
+  #     - key: SUPABASE_DB_URL
+  #       sync: false
+  #     - key: COURTLISTENER_TOKEN
+  #       sync: false
+  #     - key: ANTHROPIC_API_KEY
+  #       sync: false
+  #     - key: RENDER_API_KEY
+  #       sync: false
+  #     - key: PRIVATE_TERMS_PATH       # Secret File with the private term list (never in the repo)
+  #       value: /etc/secrets/private_terms.txt

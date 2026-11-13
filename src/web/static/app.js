@@ -346,7 +346,8 @@
     const o = m.other_breakdown || {};
     const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
       [o.sale_no_public_buyer, "sales under way with no public buyer"],
-      [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"], [o.shell_or_closed, "shell or closed"]]
+      [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"],
+      [o.unverified_buyer, "buyers from roundup articles, unverified"], [o.shell_or_closed, "shell or closed"]]
       .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
     return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
       " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +

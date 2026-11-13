@@ -53,6 +53,7 @@ def manual_cases() -> SourceResult:
 
 def fetch(source_id: str, limit: int | None = None, **cl_kwargs) -> SourceResult:
     if source_id == "courtlistener":
+        cl_kwargs.setdefault("ledger", courtlistener.CallLedger("case_list"))   # logged; count shown in the note
         return courtlistener.run(limit, **cl_kwargs)
     if source_id == "court_manual":
         return manual_cases()
@@ -111,8 +112,12 @@ def load_courtlistener_search_only(conn, limit=None, queries=None) -> dict:
             conn.commit()
             written += len(cases)
             run.rows_in = written
-        res = courtlistener.run(limit, search_only=True, on_cases=save, queries=queries)
-    return {"cases_upserted": written, "note": res.note}
+        ledger = courtlistener.CallLedger("case_list", str(run.run_id) if getattr(run, "run_id", None) else None)
+        res = courtlistener.run(limit, search_only=True, on_cases=save, queries=queries, ledger=ledger)
+    saved = courtlistener.save_calls(conn, ledger)
+    return {"cases_upserted": written, "courtlistener_calls": len(ledger.calls),
+            "calls_logged_to": courtlistener.CALLS_TABLE if saved is not None else "not saved (table missing)",
+            "note": res.note}
 
 
 def run_all(sources, limit=None, dry_run=False, search_only=False, queries=None) -> int:
