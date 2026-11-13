@@ -259,9 +259,67 @@ def test_plan_merges():
         {"facility_id": "x4", "name": "No street", "street": None, "zip5": "10040", "is_enrollment": False},
     ]
     plan = {m["extra"]: m for m in steps.plan_merges(facs)}
-    assert set(plan) == {"x1", "x2"}
+    assert set(plan) == {"x1", "x2"}                                   # only records sharing ZIP + street number are considered
     assert plan["x1"]["survivor"] == "c1" and plan["x2"]["survivor"] == "c2"
     assert plan["x2"]["name_ratio"] < 60 <= plan["x1"]["name_ratio"]
+    assert plan["x1"]["merge"] and plan["x1"]["reason"] == "merge:same_name"
+    # Nov 12 rule: a different name with no operator on record is no longer merged on the address alone
+    assert not plan["x2"]["merge"] and plan["x2"]["reason"] == "blocked:name_differs_operator_unknown"
+
+
+def _cms(fid, name, street, ops=()):
+    return {"facility_id": fid, "name": name, "street": street, "zip5": "17601", "is_enrollment": True, "operators": list(ops)}
+
+
+def _extra(fid, name, street, ops=()):
+    return {"facility_id": fid, "name": name, "street": street, "zip5": "17601", "is_enrollment": False, "operators": list(ops)}
+
+
+def test_merge_rule_same_campus_different_business_is_blocked():
+    """A personal-care home and a nursing home at one address, run by different companies: two businesses."""
+    facs = [_cms("c", "OAK HILL NURSING AND REHABILITATION CENTER", "100 MAIN ST", ["Oak Hill Operating LLC"]),
+            _extra("x", "Willow Terrace Personal Care", "100 Main Street", ["Willow Terrace Senior Living Inc"])]
+    m = steps.plan_merges(facs)[0]
+    assert not m["merge"] and m["reason"] == "blocked:name_and_operator_differ" and m["same_operator"] is False
+    # the same pair with no operator on record for the licence record is blocked too (never merged on the address alone)
+    facs[1]["operators"] = []
+    assert steps.plan_merges(facs)[0]["reason"] == "blocked:name_differs_operator_unknown"
+
+
+def test_merge_rule_true_duplicate_with_a_name_variant_is_merged():
+    facs = [_cms("c", "FORT TRYON CENTER FOR REHABILITATION AND NURSING", "801W 190TH ST"),
+            _extra("x", "Fort Tryon Center for Rehab & Nursing", "801 West 190th Street")]
+    m = steps.plan_merges(facs)[0]
+    assert m["merge"] and m["reason"] == "merge:same_name" and m["name_ratio"] >= steps.MERGE_NAME_MIN
+    # a different trading name under the same operator is one building too
+    facs = [_cms("c", "OAK HILL NURSING AND REHABILITATION CENTER", "100 MAIN ST", ["Oak Hill Operating, LLC"]),
+            _extra("x", "The Residence at the Hill", "100 Main Street", ["OAK HILL OPERATING LLC"])]
+    m = steps.plan_merges(facs)[0]
+    assert m["merge"] and m["reason"] == "merge:same_operator" and m["name_ratio"] < steps.MERGE_NAME_MIN
+
+
+def test_merge_rule_different_street_name_is_blocked():
+    """Same ZIP and street number, another street: not the same building, whatever the name says."""
+    facs = [_cms("c", "OAK HILL NURSING CENTER", "100 MAIN ST", ["Oak Hill Operating LLC"]),
+            _extra("x", "Oak Hill Nursing Center", "100 Church Road", ["Oak Hill Operating LLC"])]
+    m = steps.plan_merges(facs)[0]
+    assert not m["merge"] and m["reason"] == "blocked:different_street_name"
+
+
+def test_merge_rule_picks_the_candidate_it_may_merge_into_and_logs_every_decision(tmp_path, monkeypatch):
+    facs = [_cms("c1", "OAK HILL NURSING CENTER", "100 MAIN ST"), _cms("c2", "WILLOW TERRACE HEALTH CENTER", "100 MAIN ST"),
+            _extra("x1", "Willow Terrace Health Ctr", "100 Main St"), _extra("x2", "Something Else Entirely", "100 Main St")]
+    plan = {m["extra"]: m for m in steps.plan_merges(facs)}
+    assert plan["x1"]["survivor"] == "c2" and plan["x1"]["merge"] and plan["x1"]["n_candidates"] == 2
+    assert not plan["x2"]["merge"]
+    assert all(m["reason"].startswith(("merge:", "blocked:")) for m in plan.values())       # every decision has a reason
+    import src.common.config as config
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    log = steps.write_merge_log(list(plan.values()), applied=False)
+    rows = list(__import__("csv").DictReader(open(log)))
+    assert {(r["extra"], r["decision"], r["applied"]) for r in rows} == {("x1", "merge", "False"), ("x2", "blocked", "False")}
+    assert all(r["reason"] for r in rows)
+    assert not steps.same_operator(["Acme LLC"], []) and not steps.same_operator([], [])   # unknown is never "the same"
 
 
 # ---------------------------------------------------------------- Gate 2 follow-up: directions, borrower groups
