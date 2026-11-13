@@ -71,6 +71,8 @@ def without(state: dict | None, hidden_ids) -> dict | None:
     out["lead_count"] = len(out["stages"])
     if "top20" in out:
         out["top20"] = [i for i in out["top20"] if i not in hidden]
+    if out.get("scores") is not None:
+        out["scores"] = {i: v for i, v in out["scores"].items() if i not in hidden}
     return out
 
 

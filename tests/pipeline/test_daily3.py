@@ -358,3 +358,109 @@ def test_courtlistener_client_waits_5_seconds_between_calls(tmp_path, monkeypatc
         c.get(f"{clmod.API}/search/", use_cache=False)
     assert waits == [5.0, 5.0] and len(led.calls) == 3          # first call immediate, then 5 s apart
     assert led.used(1) == 3                                      # rolling caps still count every call
+
+
+# ── top-20 hold: only a material change holds the run; a HOLD exits 0, a real error exits 1 ──
+def _state(order, scores):
+    return {"lead_count": len(scores), "top20": list(order), "scores": dict(scores),
+            "stages": {k: "early" for k in scores}, "buyers": {k: "NOT FOUND|NOT FOUND" for k in scores}}
+
+
+def _top(n=19):
+    return {f"t{i}": 100.0 - i for i in range(n)}
+
+
+def test_rescoring_swap_at_the_top20_line_passes_and_is_counted():
+    # the Nov 13 case: #20 loses 0.05 points to daily date rescoring and trades places with a lead just below it
+    old = dict(_top(), a=40.04, b=40.00)
+    new = dict({k: v - 0.05 for k, v in _top().items()}, a=39.99, b=40.00)
+    prev, cand = _state(list(_top()) + ["a"], old), _state(list(_top()) + ["b"], new)
+    d = D.diff_states(prev, cand)
+    g = D.top20_gate(prev, cand, D.real_change_ids(d, []), 1.0)
+    assert g["pass"] and not g["hold"]
+    assert g["counts"]["rescoring_only_swaps"] == 2 and g["counts"]["entered_or_left"] == 2
+    assert g["counts"]["entered_or_left_real"] == 0 and g["counts"]["score_moves_over_limit"] == 0
+    assert "rescoring only" in g["detail"] and "40" not in g["detail"]            # counts only, never a score
+    gates = {"tests": {"pass": True, "detail": ""}, "top20_order": g}
+    assert not D.is_hold(gates) and D.exit_code(False, False, True, "published", gates) == 0
+
+
+def test_new_top20_lead_with_a_change_row_holds_and_exits_0():
+    old = dict(_top(), a=40.04)
+    new = dict(_top(), a=40.04, n=80.0)                      # n is new on the list and lands in the top 20
+    prev = _state(list(_top()) + ["a"], old)
+    cand = _state(list(_top())[:5] + ["n"] + list(_top())[5:], new)
+    d = D.diff_states(prev, cand)
+    assert d["new"] == ["n"] and d["top20_entrants"] == ["n"]
+    g = D.top20_gate(prev, cand, D.real_change_ids(d, []), 1.0)
+    assert not g["pass"] and g["hold"] and g["counts"]["entered_or_left_real"] == 1
+    gates = {"tests": {"pass": True, "detail": ""}, "top20_order": g}
+    assert D.is_hold(gates)
+    assert D.exit_code(False, False, True, "blocked", gates) == 0       # live, held: success, the issue is the notice
+    assert D.exit_code(True, True, False, "blocked", gates) == 0        # strict dry run, held
+
+
+def test_stage_change_that_moves_a_lead_into_the_top20_holds():
+    old = dict(_top(), a=40.04, b=40.00)
+    new = dict(_top(), a=40.04, b=40.20)
+    prev, cand = _state(list(_top()) + ["a"], old), _state(list(_top()) + ["b"], new)
+    cand["stages"]["b"] = "done:approved"
+    g = D.top20_gate(prev, cand, D.real_change_ids(D.diff_states(prev, cand), []), 1.0)
+    assert g["hold"] and g["counts"]["entered_or_left_real"] == 1 and g["counts"]["score_moves_over_limit"] == 0
+
+
+def test_score_move_of_1_2_points_holds_even_when_the_order_is_the_same():
+    old = dict(_top(), a=40.04)
+    new = dict(old, t3=old["t3"] + 1.2)                       # same order, one score jumps
+    order = list(_top()) + ["a"]
+    prev, cand = _state(order, old), _state(order, new)
+    g = D.top20_gate(prev, cand, set(), 1.0)
+    assert not g["pass"] and g["hold"] and g["counts"]["score_moves_over_limit"] == 1 and g["counts"]["rank_moves"] == 0
+    assert D.top20_gate(prev, _state(order, dict(old, t3=old["t3"] + 0.99)), set(), 1.0)["pass"]
+    assert D.top20_gate(prev, cand, set(), 2.0)["pass"]       # the threshold comes from config
+
+
+def test_hold_threshold_is_read_from_config():
+    from src.common.config import thresholds
+    assert D.hold_score_move() == float(thresholds()["daily_check"]["top20_hold_score_move"]) == 1.0
+
+
+def test_order_change_against_a_list_stored_without_scores_is_held():
+    prev = {"lead_count": 2, "top20": ["a", "b"], "stages": {}, "buyers": {}}            # run log from before scores
+    assert D.top20_gate(prev, _state(["a", "b"], {"a": 2.0, "b": 1.0}), set(), 1.0)["pass"]
+    g = D.top20_gate(prev, _state(["b", "a"], {"a": 1.0, "b": 2.0}), set(), 1.0)
+    assert g["hold"] and "no scores" in g["detail"]
+
+
+def test_a_failed_gate_is_never_a_hold():
+    hold = {"pass": False, "hold": True, "detail": "HOLD"}
+    gates = {"leak_scan": {"pass": False, "detail": "term #2"}, "top20_order": hold}
+    assert not D.is_hold(gates) and D.exit_code(False, False, True, "blocked", gates) == 1
+    ok = {"top20_order": {"pass": True, "hold": False, "detail": "unchanged"}}
+    assert D.exit_code(False, False, True, "failed", ok) == 1                             # the upload itself failed
+    assert D.exit_code(True, False, False, "blocked", gates) == 0 and D.exit_code(True, True, False, "blocked", gates) == 1
+
+
+def test_a_crash_exits_1(monkeypatch, capsys):
+    def boom(argv=None):
+        raise RuntimeError("database went away")
+    monkeypatch.setattr(D, "main", boom)
+    assert D.cli(["--live", "--publish"]) == 1
+    assert "RuntimeError" in capsys.readouterr().err
+
+
+def test_snapshot_state_keeps_scores_and_exclusions_drop_them():
+    from src.pipeline import changelog as cl
+    snap = {"items": [{"lead_id": "a", "rank": 1, "score": 9.5, "stage": "early"},
+                      {"lead_id": "b", "rank": 2, "score": None, "stage": "early"}]}
+    st = D.snapshot_state(snap)
+    assert st["scores"] == {"a": 9.5} and st["top20"] == ["a", "b"]
+    assert cl.without(st, {"a"})["scores"] == {}
+
+
+def test_workflow_files_a_counts_only_issue_on_hold():
+    from src.common.config import PROJECT_ROOT
+    y = (PROJECT_ROOT / ".github" / "workflows" / "daily3.yml").read_text()
+    assert "issues: write" in y and 'title="daily3 hold $(TZ=America/New_York date +%F)"' in y
+    assert "gh issue edit" in y and "gh issue create" in y and "grep -q '^Hold: YES'" in y
+    assert "(PASS|FAIL|HOLD)" in y

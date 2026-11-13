@@ -30,6 +30,12 @@ Whatever does not fit is queued for the next run and logged. Gates (any failure 
 (terms are never printed); every lead has a public source link; lead count within +/-10% of the last run; packed
 snapshot < 800 KB. A new top-20 lead or any stage change publishes with reviewed=false.
 
+Top-20 HOLD (top20_gate; threshold daily_check.top20_hold_score_move in config/thresholds.yaml, an assumption): the
+run is HELD for a person only when (a) a lead enters or leaves the top 20 AND has a real change (new lead, stage or
+buyer change, a court step found tonight, or it left the list), or (b) the score of any top-20 lead moves by the
+threshold or more. Rank swaps that come from date-based rescoring alone pass and are counted. A HOLD publishes nothing
+and exits 0 (the workflow opens or updates one GitHub issue with counts only); any other failed gate or a crash exits 1.
+
 Dry run: no Supabase writes (read-only session), no cursor advance, no publish, no LLM calls (cost is estimated).
 Cursors and the run log go to output/daily3_dryrun/*.json. The candidate snapshot is the last published one with
 tonight's findings applied in memory. Live: cursors in raw.source_cursors, run log in raw.refresh_runs
@@ -215,7 +221,77 @@ def snapshot_state(snap: dict) -> dict:
     items = snap.get("items") or []
     return {"lead_count": len(items), "stages": {r["lead_id"]: stage_key(r) for r in items},
             "buyers": {r["lead_id"]: f"{r.get('buyer') or NF}|{r.get('buyer_status') or NF}" for r in items},
-            "top20": [r["lead_id"] for r in items if r.get("rank") and r["rank"] <= 20]}
+            "top20": [r["lead_id"] for r in items if r.get("rank") and r["rank"] <= 20],
+            "scores": {r["lead_id"]: float(r["score"]) for r in items if r.get("score") is not None}}
+
+
+def hold_score_move() -> float:
+    """Score move (points) of a top-20 lead that holds the run. ASSUMPTION, set in config/thresholds.yaml."""
+    from src.common.config import thresholds
+    return float(((thresholds().get("daily_check") or {}).get("top20_hold_score_move", 1.0)))
+
+
+def real_change_ids(d: dict, changes: list | None = None) -> set[str]:
+    """Leads with a real change tonight (not date-based rescoring): new on the list, left the list, stage or buyer
+    changed against the last published list, or a court step applied by tonight's follow-through."""
+    out = set(d.get("new") or []) | set(d.get("dropped") or []) | set(d.get("stage_changed") or []) \
+        | set(d.get("buyer_changed") or [])
+    return out | {c.lead_id for c in changes or [] if c.kind == "stage_changed"}
+
+
+def top20_gate(prev: dict | None, cand: dict, real: set[str], min_move: float) -> dict:
+    """Auto-publish rule for the top 20. Returns {"pass", "hold", "detail", "counts"}; the detail holds counts only
+    (never a name, an id or a score).
+
+    HOLD when (a) a lead enters or leaves the top 20 AND is in `real`, or (b) the score of a lead in the old or the
+    new top 20 moves by `min_move` points or more. Everything else passes: the same order, or rank swaps that come
+    from rescoring alone. An order change that cannot be measured (the last published list was stored without
+    scores) is held, because rule (b) cannot be checked."""
+    if not prev:
+        return {"pass": True, "hold": False, "detail": "no earlier list to compare", "counts": {}}
+    old, new = list(prev.get("top20") or []), list(cand.get("top20") or [])
+    both = set(old) | set(new)
+    crossed = set(old) ^ set(new)                               # entered or left the top 20
+    moved_rank = sum(1 for k in both if (old.index(k) if k in old else -1) != (new.index(k) if k in new else -1))
+    ps, cs = prev.get("scores"), cand.get("scores") or {}
+    counts = {"rank_moves": moved_rank, "entered_or_left": len(crossed), "entered_or_left_real": len(crossed & real),
+              "score_moves_over_limit": None, "rescoring_only_swaps": 0}
+    if ps is None:
+        if old == new:
+            return {"pass": True, "hold": False, "detail": "unchanged", "counts": dict(counts, score_moves_over_limit=0)}
+        return {"pass": False, "hold": True, "counts": counts,
+                "detail": f"HOLD: order changed ({moved_rank} rank moves) and the last published list has no scores "
+                          f"to compare; a person reviews and publishes by hand"}
+    big = sum(1 for k in both if k in ps and k in cs and abs(cs[k] - ps[k]) >= min_move - 1e-9)
+    counts["score_moves_over_limit"] = big
+    if crossed & real or big:
+        return {"pass": False, "hold": True, "counts": counts,
+                "detail": f"HOLD: {len(crossed & real)} entered or left the top 20 with a real change, {big} moved "
+                          f"{min_move:g}+ points ({moved_rank} rank moves); a person reviews and publishes by hand"}
+    counts["rescoring_only_swaps"] = moved_rank
+    if not moved_rank:
+        return {"pass": True, "hold": False, "detail": "unchanged", "counts": counts}
+    return {"pass": True, "hold": False, "counts": counts,
+            "detail": f"{moved_rank} rank moves from rescoring only ({len(crossed)} across the top-20 line, 0 with a "
+                      f"real change, 0 moved {min_move:g}+ points): passes"}
+
+
+def is_hold(gates: dict) -> bool:
+    """True when the ONLY thing between the run and a publish is the top-20 hold."""
+    failed = [k for k, v in gates.items() if not v["pass"]]
+    return failed == ["top20_order"] and bool(gates["top20_order"].get("hold"))
+
+
+def exit_code(dry_run: bool, strict: bool, publish: bool, status: str, gates: dict) -> int:
+    """0 = fine or HELD for a person (the workflow files the hold as an issue); 1 = a gate failed or the publish did."""
+    all_pass = all(v["pass"] for v in gates.values())
+    if all_pass and not (publish and status != "published"):
+        return 0
+    if is_hold(gates):
+        return 0
+    if dry_run:
+        return 1 if strict else 0
+    return 1
 
 
 def diff_states(prev: dict | None, cand: dict) -> dict:
@@ -368,7 +444,13 @@ class Store:
             r = self.conn.execute("select state, started_at from raw.refresh_runs where mode = 'live' and status in "
                                   "('published', 'no_change') order by started_at desc limit 1").fetchone()
             if r and r["state"]:
-                return dict(r["state"], label=f"run log {r['started_at']:%Y-%m-%d %H:%M}"), "raw.refresh_runs"
+                state = dict(r["state"], label=f"run log {r['started_at']:%Y-%m-%d %H:%M}")
+                if "scores" not in state and PUBLISHED.exists():       # laptop only: a run log from before scores
+                    from src.web.server import load_snapshot          # were stored; the uploaded file fills them in
+                    up = snapshot_state(load_snapshot(str(PUBLISHED)))  # when it is the same list
+                    if up["top20"] == list(state.get("top20") or []) and up["lead_count"] == state.get("lead_count"):
+                        state["scores"] = up["scores"]
+                return state, "raw.refresh_runs"
         if PUBLISHED.exists():                        # laptop only (see portability)
             from src.web.server import load_snapshot
             snap = load_snapshot(str(PUBLISHED))
@@ -961,10 +1043,9 @@ def main(argv=None) -> int:
         cand["changelog"] = cl.build(history, cl.run_entry(run_no, started, "pending", cl_rows, cl_removed, {},
                                                            checked, n_leads), cl_rows, cand, started, base_n)
         g = gates(cand, prev, not a.skip_tests)
-        # auto-publish rule: the top-20 order must be exactly the last published one; otherwise HOLD for a person
-        same_top = not prev or list(prev.get("top20") or []) == list(cstate["top20"])
-        g["top20_order"] = {"pass": bool(same_top), "detail": "unchanged" if same_top else
-                            "changed: HOLD, not published; a person reviews and publishes by hand"}
+        # auto-publish rule: HOLD for a person only on a material top-20 change (top20_gate); rescoring swaps pass
+        top = top20_gate(prev, cstate, real_change_ids(d, changes), hold_score_move())
+        g["top20_order"] = {"pass": top["pass"], "hold": top["hold"], "detail": top["detail"]}
         all_pass = all(v["pass"] for v in g.values())
         applied = [c for c in changes if c.kind == "stage_changed"]
         # rule: a new top-20 lead or a stage change goes out unreviewed; so does a changed top-20 buyer or a
@@ -1017,7 +1098,14 @@ def main(argv=None) -> int:
 
     log("Gates")
     for k, v in g.items():
-        log(f"   {'PASS' if v['pass'] else 'FAIL'}  {k:14} {v['detail']}")
+        log(f"   {'PASS' if v['pass'] else 'HOLD' if v.get('hold') else 'FAIL'}  {k:14} {v['detail']}")
+    held = is_hold(g)
+    tc = top["counts"]
+    log(f"Hold: {'YES' if held else 'no'}; top 20: {tc.get('rank_moves', 0)} rank moves, "
+        f"{tc.get('rescoring_only_swaps', 0)} from rescoring only, {tc.get('entered_or_left', 0)} entered or left, "
+        f"{tc.get('entered_or_left_real', 0)} of them with a real change, "
+        f"{'not measured' if tc.get('score_moves_over_limit') is None else tc['score_moves_over_limit']} moved "
+        f"{hold_score_move():g}+ points")
     log(f"Diff vs {d['baseline'] or 'nothing'}: new {len(d['new'])}, dropped {len(d['dropped'])}, "
         f"stage changed {len(d['stage_changed'])}, buyer changed {len(d['buyer_changed'])} "
         f"(top 20: {len(d['top20_buyer_changed'])}), top-20 entrants {len(d['top20_entrants'])}")
@@ -1040,11 +1128,17 @@ def main(argv=None) -> int:
     for p in portability():
         log(f"   - {p}")
     log("Written: " + ", ".join(written))
-    if a.dry_run:
-        return 1 if (a.strict and not all_pass) else 0
-    if a.publish and status != "published":             # held or failed: the job fails, so the owner gets an email
+    return exit_code(a.dry_run, a.strict, a.publish, status, g)   # a HOLD is 0; a failed gate or publish is 1
+
+
+def cli(argv=None) -> int:
+    """Entry point: a crash is a real error (exit 1), never mistaken for a hold."""
+    try:
+        return main(argv)
+    except Exception:
+        import traceback
+        traceback.print_exc()
         return 1
-    return 0 if all_pass else 1
 
 
 def record_publish() -> int:
@@ -1134,4 +1228,4 @@ def live_rebuild(conn, docs, new_cases, changes, budget: Budget, log=print, roun
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())

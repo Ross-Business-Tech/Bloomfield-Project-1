@@ -5,9 +5,14 @@
 # the copy of this file on the repository's DEFAULT branch; the job itself always checks out `development`, the
 # branch the site is deployed from, so the code that builds the data is the code that shows it.
 #
-# AUTO-PUBLISH RULE (live): the run publishes only when every gate passes AND the top-20 order is unchanged AND the
-# lead count is within 10% of the last published list. Otherwise it HOLDS (nothing is published) and the job FAILS,
-# so GitHub emails the person who owns the schedule.
+# AUTO-PUBLISH RULE (live): the run publishes only when every gate passes AND the lead count is within 10% of the
+# last published list AND the top 20 has no material change. A material change is: a lead enters or leaves the top 20
+# with a real change behind it (new lead, stage, buyer, court step), or a top-20 score moves by
+# daily_check.top20_hold_score_move points or more (config/thresholds.yaml, an assumption). Rank swaps from daily
+# date-based rescoring alone pass.
+# HOLD: nothing is published, the job SUCCEEDS, and one issue "daily3 hold YYYY-MM-DD" is opened or updated with
+# counts only (a person then reviews and publishes by hand). Any other failed gate or a crash FAILS the job, so
+# GitHub emails the person who owns the schedule.
 #
 # PUBLIC-REPO LOG RULE: this repository and its Actions logs are public. The job prints counts and status only:
 # the full output goes to a temp file that is never printed or uploaded, the summary lines are checked by
@@ -42,6 +47,7 @@ on:
 
 permissions:
   contents: read
+  issues: write            # the hold notice only (counts only)
 
 concurrency:
   group: daily3
@@ -68,6 +74,7 @@ jobs:
           COURTLISTENER_TOKEN: ${{ secrets.COURTLISTENER_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
           EXCLUDE_FACILITIES_GZ_B64: ${{ secrets.EXCLUDE_FACILITIES_GZ_B64 }}
           PRIVATE_TERMS_GZ_B64: ${{ secrets.PRIVATE_TERMS_GZ_B64 }}
           CASE_LABELS_GZ_B64: ${{ secrets.CASE_LABELS_GZ_B64 }}
@@ -106,7 +113,7 @@ jobs:
           python -m src.pipeline.daily3 $args > "$LOG" 2>&1
           rc=$?
           set -e
-          grep -E '^(Pre-flight|   (PASS|FAIL) |Budget:|Publish:|Diff vs|Change log:)' "$LOG" > "$OUT" || true
+          grep -E '^(Pre-flight|   (PASS|FAIL|HOLD) |Hold:|Budget:|Publish:|Diff vs|Change log:)' "$LOG" > "$OUT" || true
           if [ "$rc" != "0" ]; then    # an error type only (never its message, which may quote data)
             echo "exit code $rc; last error type: $(grep -oE '^[A-Za-z_.]+(Error|Exception|Exit)' "$LOG" | tail -1)" >> "$OUT"
           fi
@@ -120,5 +127,18 @@ jobs:
           else
             tail -1 "$RUNNER_TEMP/logcheck.txt"; echo "::error::Log check failed: the summary was withheld."; exit 3
           fi
-          if [ "$rc" != "0" ]; then echo "::error::Daily check did not pass or was held: nothing new was published."; fi
+          # HOLD (exit 0): one issue per day, opened or updated, built ONLY from the checked count lines above
+          if [ "$rc" = "0" ] && [ "$MODE" = "live" ] && grep -q '^Hold: YES' "$OUT"; then
+            title="daily3 hold $(TZ=America/New_York date +%F)"
+            body="$RUNNER_TEMP/hold.md"
+            { echo "The daily check was HELD: nothing was published. A person reviews the top 20 and publishes by hand."
+              echo; echo "Counts only (run $GITHUB_RUN_NUMBER):"; echo
+              grep -E '^(   HOLD |Hold:|Diff vs)' "$OUT" | sed 's/^ */- /'; } > "$body"
+            n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title \
+                  -q "[.[] | select(.title == \"$title\")][0].number // empty")
+            if [ -n "$n" ]; then gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --body-file "$body" > /dev/null
+            else gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body" > /dev/null; fi
+            echo "::notice::Daily check HELD: nothing was published; see the issue \"$title\"."
+          fi
+          if [ "$rc" != "0" ]; then echo "::error::Daily check failed: nothing new was published."; fi
           exit $rc
