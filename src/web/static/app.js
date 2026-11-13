@@ -22,16 +22,17 @@
   function stageText(r) {
     const s = r.sale_status;
     if (!s) return STAGE_LABEL[r.stage] || "";
-    return (s.status === "closed" ? "Closed / sold" : "Sale approved") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
-      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date)) + (s.portfolio ? " (portfolio sale)" : "");
+    return (s.status === "closed" ? "Closed / sold" : "Sale approved") + (s.portfolio ? " (portfolio, inferred)" : "") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
+      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date));
   }
   const STAGE_TIP = { early: "Early distress: warning signs such as losses or low occupancy, with no legal action yet.",
     middle: "Deepening: several signals at once, or a regulator or lender has stepped in.",
     late: "Late stage: a court, receiver or lender now controls what happens to the property.",
     sale: "In a sale: the property is being sold, usually through a court process, or a sale was recently reported.",
-    done: "Sale approved: a court order approved the sale, closing not confirmed. Closed / sold: a public source reports the sale closed. The date is the order or closing date in that source." };
-  const BUYER_LABEL = { confirmed: "Named", candidate: "Candidate · not final", inferred: "Unverified", none: "NOT FOUND" };
-  const BUYER_TIP = { confirmed: "Named: a public source states this buyer.",
+    done: "Sale approved: a court order approved the sale, closing not confirmed. Closed / sold: a public source reports the sale closed. The date is the order or closing date in that source. (portfolio, inferred): the source reports the sale of a whole portfolio and does not name this property." };
+  const BUYER_LABEL = { confirmed: "Named", candidate: "Candidate · not final", inferred_portfolio: "Inferred · portfolio sale", inferred: "Unverified", none: "NOT FOUND" };
+  const BUYER_TIP = { confirmed: "Named: a public source states this buyer for this property.",
+    inferred_portfolio: "Inferred from a portfolio sale: a public source names this buyer for the whole portfolio, but does not list this property. Not counted as a named buyer and not on List A.",
     candidate: "Candidate: a proposed or stalking-horse bidder. Not final; another bidder may win.",
     inferred: "Unverified: an older or shell-company name that no recent source confirms.",
     none: "No public source names a buyer yet." };
@@ -74,7 +75,7 @@
     ["AL / IL / MC", "Assisted living (help with daily activities), independent living (apartments with services), memory care (secured care for dementia)."],
     ["CCRC", "Continuing-care retirement community: independent living, assisted living and nursing care on one campus."],
     ["Special Focus Facility", "Medicare's list of nursing homes with a history of serious quality problems."],
-    ["List A / List B / List C", "A: live deals with a buyer named in a source. B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
+    ["List A / List B / List C", "A: live deals with a buyer named for that property in a source (a buyer known only from a portfolio-wide sale is shown as inferred and is not on List A). B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
   ];
   const FLAG_TEXT = { sale_approved: "a court order approved the sale", sale_closed: "a public source reports the sale closed",
     closing_unverified: "closing not verified in a public source",
@@ -207,6 +208,7 @@
     else if (r.signals.length) parts.push(r.signals.length + " separate distress signals");
     if (r.buyer && r.buyer_group === "confirmed") parts.push("buyer named in a source");
     else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer (not final)");
+    else if (r.buyer && r.buyer_group === "inferred_portfolio") parts.push("buyer inferred from a portfolio sale");
     else if (!r.buyer) parts.push("no buyer named yet");
     if (bd.size_fit > 0) parts.push("fits a $3–30M loan");
     if (bd.care_type_fit > 0) parts.push("senior housing (care-type fit, an assumption)");
@@ -328,11 +330,13 @@
     const items = S.data.items, n = SUM("leads", items.length);
     const senior = items.filter((r) => r.care_types.some((t) => SENIOR_TYPES.includes(t))).length;
     const states = new Set(items.map((r) => r.state).filter(Boolean)).size;
-    const named = items.filter((r) => r.buyer_group === "confirmed").length;
+    const named = SUM("buyers_named", items.filter((r) => r.buyer_group === "confirmed").length);
+    const inferred = SUM("buyers_inferred_portfolio", items.filter((r) => r.buyer_group === "inferred_portfolio").length);
     const phone = items.filter((r) => (r.contact || {}).phone).length;
     const pct = (x) => (n ? Math.round((100 * x) / n) : 0);
     const rows = [[n, "", "leads on the list", "public sources only"],
-      [pct(named), "%", "have a buyer named in a source", fmtInt(named) + " leads"],
+      [named, "", "have a buyer named for that property in a source", "List A is built from these"],
+      [inferred, "", "show a buyer inferred from one portfolio sale", "the source does not list the property; never added to the named count"],
       [pct(senior), "%", "are senior housing rather than nursing homes", fmtInt(senior) + " AL / IL / MC / CCRC leads"],
       [pct(phone), "%", "have a public phone number on file", "the rest read NOT FOUND"],
       [states, "", "states with at least one lead", ""]];
@@ -347,9 +351,10 @@
     const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
       [o.sale_no_public_buyer, "sales under way with no public buyer"],
       [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"],
+      [o.inferred_portfolio, "buyer inferred from a portfolio sale"],
       [o.unverified_buyer, "buyers from roundup articles, unverified"], [o.shell_or_closed, "shell or closed"]]
       .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
-    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
+    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named for that property) + List B " + fmtInt(m.list_b) +
       " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +
       ". List C = " + fmtInt(m.list_c_buyers) + " repeat buyers, linked to " + fmtInt(m.list_c_linked_leads) + " of these leads.";
   }
@@ -463,7 +468,7 @@
     $("f-care").replaceChildren(option("", "All care types"), option("senior", "Senior housing (AL / IL / MC / CCRC)"),
       option("SNF", "Skilled nursing (SNF)"), ...SENIOR_TYPES.map((c) => option(c, c + " only")));
     $("f-stage").replaceChildren(option("", "All stages"), ...STAGES.map((s) => option(s, STAGE_LABEL[s])));
-    $("f-buyer").replaceChildren(option("", "Any buyer status"), option("confirmed", "Buyer named"), option("candidate", "Candidate (not final)"),
+    $("f-buyer").replaceChildren(option("", "Any buyer status"), option("confirmed", "Buyer named"), option("candidate", "Candidate (not final)"), option("inferred_portfolio", "Inferred · portfolio sale"),
       option("inferred", "Unverified"), option("none", "No buyer found"));
     for (const id of FILTER_IDS) $(id).addEventListener("input", () => { S.page = 1; S.sel = -1; render(); });
     $("f-state").addEventListener("input", (e) => setState(e.target.value));
@@ -640,7 +645,7 @@
   }
 
   /* ---------- Buyers: who is taking these properties over ---------- */
-  const B_SECTIONS = [["confirmed", "Named"], ["candidate", "Candidate · not final"], ["inferred", "Unverified"]];
+  const B_SECTIONS = [["confirmed", "Named"], ["candidate", "Candidate · not final"], ["inferred_portfolio", "Inferred · portfolio sale"], ["inferred", "Unverified"]];
   function groupBuyers() {
     const m = new Map();
     for (const r of S.data.items) {
@@ -653,7 +658,7 @@
     for (const g of out) {
       g.repeat = S.repeat.get(g.name.trim().toLowerCase()) || null;
       g.leads.sort((a, b) => a.rank - b.rank);
-      g.group = ["confirmed", "candidate", "inferred"].find((k) => g.groups[k]) || "inferred";
+      g.group = ["confirmed", "candidate", "inferred_portfolio", "inferred"].find((k) => g.groups[k]) || "inferred";
       g.states = [...new Set(g.leads.map((r) => r.state).filter(Boolean))].sort();
       g.care = [...new Set(g.leads.flatMap((r) => r.care_types))];
       const bd = (g.leads.find((r) => (r.breakdown || {}).buyer_type) || {}).breakdown || {};
@@ -804,11 +809,15 @@
 
     // three numbers, never more
     const named = rows.filter((r) => r.buyer_group === "confirmed").length;
+    const inferred = rows.filter((r) => r.buyer_group === "inferred_portfolio").length;
     const mid = level === 0 ? [new Set(rows.map((r) => r.state).filter(Boolean)).size, "states"]
       : level === 1 ? [new Set(rows.map(cityKey)).size, "cities"] : [rows.filter((r) => phoneText((r.contact || {}).phone)).length, "with phone"];
     const nLeads = level === 0 && !M.layers.size ? SUM("leads", rows.length) : rows.length;
-    $("hud").replaceChildren(...[[nLeads, nLeads === 1 ? "lead" : "leads"], mid, [named, "buyer named"]].map(([n, label]) =>
-      el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))));
+    // buyers: named and inferred are always two separate counts, never one combined number or %
+    $("hud").replaceChildren(...[[nLeads, nLeads === 1 ? "lead" : "leads"], mid].map(([n, label]) =>
+      el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))),
+      el("div", { class: "hud-buyers" }, el("dt", { text: "Buyers" }), el("dd", { "aria-label": fmtInt(named) + " named, " + fmtInt(inferred) + " inferred" },
+          el("span", { text: fmtInt(named) + " named" }), el("span", { text: fmtInt(inferred) + " inferred" }))));
 
     // layer toggles
     const base = M.st ? S.byRank.filter((r) => (M.st === NOSTATE ? !r.state : r.state === M.st) && (!M.city || cityKey(r) === M.city)) : S.byRank;
@@ -1056,6 +1065,7 @@
       el("p", { class: "buyer-big" }, r.buyer ? el("strong", { text: r.buyer }) : null, buyerNotes(r) ? el("span", { class: "bnote", text: buyerNotes(r) }) : null, " ", buyerChip(r.buyer_group),
         r.flags.includes("buyer_possible_insider") ? el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." }) : null),
       r.buyer_group === "candidate" ? el("p", { class: "caveat", text: "Proposed or stalking-horse bidder. Not final: another bidder may win." }) : null,
+      r.buyer_group === "inferred_portfolio" ? el("p", { class: "caveat", text: "Inferred: a public source names this buyer for a whole portfolio sale but does not list this property. Not a named buyer; not on List A." }) : null,
       r.buyer_group === "inferred" ? el("p", { class: "caveat", text: "This name is older or belongs to a shell company, and no recent source confirms it." }) : null,
       !r.buyer ? el("p", { class: "muted", text: "No public source names a buyer yet. That is the opening: financing is usually arranged once a buyer steps in." }) : null,
       r.buyer ? el("dl", { class: "facts" },
@@ -1207,7 +1217,7 @@
     const lines = S.rows.map((r) => { const c = r.contact || {};
       return [r.lists.join("/"), listRank(r), r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
         phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
-        r.signals.join(";"), r.sale_status ? stageText(r) : r.stage, r.buyer || "NOT FOUND", r.buyer_group, r.score, whyShort(r), r.sources.join(" | "), r.not_found.join(";")]; });
+        r.signals.join(";"), r.sale_status ? stageText(r) : r.stage, r.buyer || "NOT FOUND", r.buyer_group === "inferred_portfolio" ? BUYER_LABEL.inferred_portfolio : r.buyer_group, r.score, whyShort(r), r.sources.join(" | "), r.not_found.join(";")]; });
     saveCsv(header, lines, "deal-radar-" + (S.tab === "all" ? "leads" : "list-" + S.tab.toLowerCase()) + (S.state ? "-" + S.state : "") + ".csv");
   });
 
