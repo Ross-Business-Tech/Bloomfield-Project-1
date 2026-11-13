@@ -133,6 +133,10 @@ button.chip { cursor: help; }
 .chip.buyer-confirmed { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
 .chip.buyer-candidate { border: 1px dashed var(--primary); color: var(--primary); font-weight: 600; }
 .chip.buyer-inferred { border-style: dotted; color: var(--muted); }
+.chip.buyer-inferred_portfolio { border: 1px dotted var(--primary); color: var(--primary); }
+.hud .hud-buyers dd { font-size: 24px; line-height: 1.25; }
+.hud .hud-buyers dd span { display: block; white-space: nowrap; }
+@media (max-width: 720px) { .hud .hud-buyers dd { font-size: 16px; } }
 .chip.plain { color: var(--muted); }
 .i { font-size: 12px; color: var(--accent); }
 .term { display: inline-flex; align-items: baseline; gap: 3px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: help;
