@@ -237,6 +237,7 @@
     S.byRank = S.data.items.slice().sort((a, b) => a.rank - b.rank);
     S.buyers = groupBuyers();
     $("asof").textContent = "As of " + fmtDate(S.data.generated_at);
+    buildChanges();
     $("loading").classList.add("hidden");
     buildFilters();
     buildTabs();
@@ -255,12 +256,13 @@
   }
 
   /* ---------- pages ---------- */
-  const VIEWS = { "#/leads": "leads", "#/buyers": "buyers", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore" };
-  const VIEW_IDS = ["dashboard", "leads", "buyers", "overview", "how", "explore"];
+  const VIEWS = { "#/leads": "leads", "#/buyers": "buyers", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore", "#/changes": "changes" };
+  const VIEW_IDS = ["dashboard", "leads", "buyers", "overview", "how", "explore", "changes"];
   function route() {
     const h = location.hash;
     const listRoute = /^#\/leads\/([ABC])$/.exec(h), buyerQ = /^#\/buyers\?q=(.*)$/.exec(h);
-    const v = listRoute ? "leads" : buyerQ ? "buyers" : VIEWS[h] || "dashboard";
+    let v = listRoute ? "leads" : buyerQ ? "buyers" : VIEWS[h] || "dashboard";
+    if (v === "changes" && !(S.data || {}).changelog) v = "dashboard";
     const changed = S.view !== v;
     if (changed) stopMotion();
     S.view = v;
@@ -450,6 +452,86 @@
     $("x-table").classList.toggle("hidden", rows.length === 0);
     $("x-pager").replaceChildren(...pager(X.page, pages, rows.length, (p) => { X.page = p; renderExplore(); }));
   }
+  /* ---------- Change log: what each daily check changed (shown only when the snapshot carries one) ---------- */
+  const CL = { period: "run", mode: "changes", kind: "", page: 1 };
+  const CL_PERIODS = [["run", "Last check"], ["7", "7 days"], ["30", "30 days"]];
+  const CL_KINDS = { stage: "stage changes", buyer: "buyer changes", new_lead: "new leads" };
+  const CL_STATUS = { published: "Published", no_change: "No change", blocked: "Blocked by a check", dry_run: "Trial run (not published)", ready: "Ready", failed: "Failed", pending: "Running" };
+  const GATE_LABEL = { preflight: "Private inputs present", tests: "Tests", leak_scan: "Leak scan", source_links: "Source link on every lead", lead_count: "Lead count within limits", snapshot_size: "File size", consistency: "Counts agree" };
+  const CHECKED_LABEL = { dockets_read: "court dockets read", epiq_pages: "claims-agent pages", sale_steps_found: "sale steps found", new_dockets: "new dockets", new_articles: "new articles", courtlistener_calls: "CourtListener calls" };
+  function clRuns() {
+    const c = S.data.changelog;
+    if (CL.period === "run") return c.runs.filter((r) => r.no === c.check_no);
+    const since = new Date(c.updated_at).getTime() - Number(CL.period) * 864e5;
+    return c.runs.filter((r) => new Date(r.at).getTime() >= since);
+  }
+  function seg(id, options, current, pick) {
+    $(id).replaceChildren(...options.map(([k, label]) => el("button", { type: "button", "aria-pressed": String(k === current), text: label, onclick: () => pick(k) })));
+  }
+  function buildChanges() {
+    const c = S.data.changelog;
+    if (!c) return;
+    const label = "Updated " + c.updated_et + " · Daily check #" + c.check_no;
+    $("asof").replaceChildren(el("a", { href: "#/changes", text: label, title: "See what changed" }));
+    $("cl-head").textContent = label;
+    renderChanges();
+  }
+  function renderChanges() {
+    const c = S.data.changelog, runs = clRuns(), nos = new Set(runs.map((r) => r.no));
+    const sum = (k) => runs.reduce((a, r) => a + (r[k] || 0), 0);
+    const all = c.rows.filter((r) => nos.has(r.no));
+    const rows = all.filter((r) => !CL.kind || (CL.kind === "new_lead" ? r.reason === "new_lead" : r.reason.startsWith(CL.kind + "_")));
+    const period = CL_PERIODS.find(([k]) => k === CL.period)[1].toLowerCase();
+    const delta = (c.leads_delta > 0 ? "+" : c.leads_delta < 0 ? "−" : "±") + fmtInt(Math.abs(c.leads_delta));
+    const tile = (kind, value, label, sub) => el("div", { class: "kpi" + (kind != null ? " click" : "") + (kind != null && CL.kind === kind && CL.mode === "changes" ? " on" : ""),
+      ...(kind != null ? { role: "button", tabindex: "0", onclick: () => { CL.kind = CL.kind === kind ? "" : kind; CL.mode = "changes"; CL.page = 1; renderChanges(); },
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } } : {}) },
+      el("dt", {}, typeof value === "string" ? el("span", { class: "value", text: value }) : value), el("dd", {}, label, sub ? el("span", { class: "sub", text: sub }) : null));
+    // buyers: named and inferred are two counts, never one number
+    const buyers = el("span", { class: "value two" }, el("span", { text: fmtInt(c.buyers_named) + " named" }), el("span", { text: fmtInt(c.buyers_inferred) + " inferred" }));
+    $("cl-tiles").replaceChildren(
+      tile("new_lead", fmtInt(c.leads), "Leads", delta + " vs " + c.baseline.label + " (" + fmtInt(c.baseline.leads) + ")"),
+      tile("buyer", buyers, "Buyers", fmtInt(sum("buyers_changed")) + " buyer changes, " + period),
+      tile("stage", fmtInt(sum("stages_changed")), "Stages changed", period),
+      tile(null, fmtInt(sum("removed")), "Removed", period + "; removed leads are not listed"));
+    seg("cl-period", CL_PERIODS, CL.period, (k) => { CL.period = k; CL.page = 1; renderChanges(); });
+    seg("cl-mode", [["changes", "Changes"], ["checks", "Checks run"]], CL.mode, (k) => { CL.mode = k; CL.page = 1; renderChanges(); });
+    const checks = CL.mode === "checks", list = checks ? runs : rows;
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    CL.page = Math.min(CL.page, pages);
+    const shown = list.slice((CL.page - 1) * PAGE_SIZE, CL.page * PAGE_SIZE);
+    $("cl-count").textContent = checks ? plural(runs.length, "check") + ", " + period
+      : plural(rows.length, "change") + ", " + period + (CL.kind ? " · " + CL_KINDS[CL.kind] + " only" : "");
+    const head = checks ? ["Check", "Run time", "Result", "Checks passed", "What was read", "Changes"] : ["Property", "Change", "Reason", "Source", "Date"];
+    $("cl-thead").replaceChildren(el("tr", {}, head.map((h) => el("th", { scope: "col", text: h }))));
+    $("cl-tbody").replaceChildren(...shown.map(checks ? checkRow : changeRow));
+    $("cl-table").classList.toggle("hidden", list.length === 0);
+    $("cl-empty").classList.toggle("hidden", list.length !== 0);
+    $("cl-pager").replaceChildren(...pager(CL.page, pages, list.length, (p) => { CL.page = p; renderChanges(); }));
+  }
+  function changeRow(r) {
+    const lead = S.data.items.find((x) => x.lead_id === r.id), tip = (S.data.changelog.reasons || {})[r.reason];
+    return el("tr", { class: lead ? "" : "static", ...(lead ? { tabindex: "0", onclick: (e) => openPanel(lead, e.currentTarget, S.byRank),
+      onkeydown: (e) => { if (e.key === "Enter") openPanel(lead, e.currentTarget, S.byRank); } } : {}) },
+      el("td", { class: "prop" }, r.p || "NOT FOUND", el("span", { class: "muted place", text: [cityName(r.c), r.s].filter(Boolean).join(", ") })),
+      el("td", { text: r.change }),
+      el("td", {}, el("span", { class: "chip plain code", text: r.reason, ...(tip ? { "data-tip": tip } : {}) })),
+      el("td", {}, r.src ? ext(r.src, hostOf(r.src)) : el("span", { class: "nf", text: "NOT FOUND" })),
+      el("td", { class: "nowrap", text: fmtDate(r.d) }));
+  }
+  function checkRow(r) {
+    const gates = r.gates || [], ok = gates.filter((g) => g.pass).length;
+    const read = Object.entries(r.checked || {}).filter(([k, v]) => CHECKED_LABEL[k] && v != null).map(([k, v]) => fmtInt(v) + " " + CHECKED_LABEL[k]);
+    const moved = [[r.new, "new"], [r.stages_changed, "stage"], [r.buyers_changed, "buyer"], [r.removed, "removed"]].filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
+    return el("tr", { class: "static" },
+      el("td", { class: "strong nowrap", text: "#" + r.no }), el("td", { class: "nowrap", text: r.et }),
+      el("td", { text: CL_STATUS[r.status] || r.status }),
+      el("td", {}, el("details", { class: "more" }, el("summary", { text: ok + " of " + gates.length }),
+        el("ul", { class: "gates" }, gates.map((g) => el("li", { class: g.pass ? "ok" : "bad", text: (g.pass ? "Pass · " : "Fail · ") + (GATE_LABEL[g.name] || g.name) + ": " + g.detail }))))),
+      el("td", { class: "reason", text: read.join(", ") || "NOT FOUND" }),
+      el("td", { text: moved.join(", ") || "none" }));
+  }
+
   function pager(page, pages, count, go) {
     if (pages <= 1) return [];
     return [el("span", { class: "muted", text: "Page " + page + " of " + pages }),

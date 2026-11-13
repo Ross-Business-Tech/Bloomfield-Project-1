@@ -144,9 +144,9 @@ def phone_text(digits) -> str | None:
 
 
 def excluded() -> set[str]:
-    if not EXCLUDE_FILE.exists():
-        return set()
-    return {ln.strip() for ln in EXCLUDE_FILE.read_text().splitlines() if ln.strip() and not ln.startswith("#")}
+    """Past-deal homes left off the site: EXCLUDE_FACILITIES / EXCLUDE_FACILITIES_PATH, else the laptop file."""
+    from src.pipeline import preflight
+    return set(preflight.exclusion_ids()[0])
 
 
 def public_link(url) -> str | None:
@@ -426,7 +426,8 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
     ]
 
 
-UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules",
+               "changelog")     # changelog: only present when a daily check passes --changelog (src.pipeline.changelog)
 UPLOAD_LIMIT = 950_000        # Render: all Secret Files of a service together must stay under 1 MB
 
 
@@ -498,6 +499,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=OUTPUT_DIR / "site_snapshot.json")
     ap.add_argument("--roundup-unverified", action="store_true",
                     help="show buyers read from roundup articles as Unverified (nightly refresh rule; off by default)")
+    ap.add_argument("--changelog", type=Path, default=None,
+                    help="JSON file with the daily check's change log (src.pipeline.changelog); off by default")
     a = ap.parse_args(argv)
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
@@ -535,6 +538,8 @@ def main(argv=None) -> int:
         snap["funnel"] = funnel(conn, snap, len(explore))
         snap["sources_table"] = source_rows(conn)
         snap["rules"] = rules_block()
+    if a.changelog:
+        snap["changelog"] = json.loads(a.changelog.read_text())
     write(snap, a.out)
     print(f"snapshot: {snap['counts']} -> {a.out}; upload {a.out.with_suffix('.b64').name} "
           f"({a.out.with_suffix('.b64').stat().st_size:,} bytes) as the Render Secret File (gitignored, never commit)")

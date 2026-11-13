@@ -1,5 +1,6 @@
-# Nightly refresh of Deal Radar (src/pipeline/daily3.py): the FREE alternative to a Render cron job.
-# DISABLED (`if: false` on the job) until the team decides how to run it. Built Nov 12, 2026; dry-run tested only.
+# Daily check of Deal Radar (src/pipeline/daily3.py): the FREE alternative to a Render cron job.
+# MANUAL START ONLY (workflow_dispatch). The daily schedule below is written but COMMENTED OUT until the team decides
+# to turn it on. Built Nov 12, 2026; dry-run tested only. No secret has been added to GitHub for it.
 #
 # Uses repository secrets only (Settings > Secrets and variables > Actions); nothing secret is in this file:
 #   SUPABASE_DB_URL      Supabase "Session pooler" connection string (GitHub runners have no IPv6)
@@ -7,10 +8,13 @@
 #   ANTHROPIC_API_KEY    Claude extraction (run cap: $1)
 #   PRIVATE_TERMS        the private term list (the contents of eval/private/forbidden_terms.txt); written to a temp
 #                        file for the leak gate and deleted at the end. Without it the leak gate fails = no publish.
-#   RENDER_API_KEY       only for --publish
+#   EXCLUDE_FACILITIES   the past-deal exclusion list (the ids in eval/private/exclude_facilities_PRIVATE.txt, one
+#                        per line). Without it past-deal homes would be published.
+#   RENDER_API_KEY       uploads the snapshot
+# PRE-FLIGHT: the run fails before any work or upload when EXCLUDE_FACILITIES, PRIVATE_TERMS or RENDER_API_KEY is
+# missing or empty (src/pipeline/preflight.py; values are never printed).
 # Before enabling, see the portability list printed by every run (`python -m src.pipeline.daily3 --dry-run`): the
-# past-deal exclusion list and the watch-list CSV are still laptop-only files, and src.web.publish reads its key and
-# term list from fixed paths. Also apply supabase/migrations/20261112000100_daily3_refresh.sql first.
+# watch-list CSV is still a laptop-only file. Also apply supabase/migrations/20261112000100_daily3_refresh.sql first.
 #
 # CourtListener: this account allows 125 requests per rolling 24 h and 50 per hour. daily3 caps ALL logged calls at
 # 45 per rolling hour and 100 per rolling 24 h (its own, the case-list downloader's, the sale-check job's); most
@@ -21,9 +25,14 @@
 name: daily3
 
 on:
-  schedule:
-    - cron: "0 7 * * *"     # 07:00 UTC = 2:00 am Eastern in winter (EST), 3:00 am in summer (EDT)
+  # schedule:
+  #   - cron: "0 11 * * *"   # 11:00 UTC = 6:00 am Eastern in winter (EST), 7:00 am in summer (EDT). NOT ENABLED.
   workflow_dispatch:
+    inputs:
+      publish_changelog:
+        description: "Also show the change log on the site"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,7 +43,6 @@ concurrency:
 
 jobs:
   refresh:
-    if: false                 # disabled: remove this line only after the team decides (see the notes above)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -53,17 +61,22 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+          EXCLUDE_FACILITIES: ${{ secrets.EXCLUDE_FACILITIES }}
+          PUBLISH_CHANGELOG: ${{ inputs.publish_changelog }}
         run: |
-          for v in SUPABASE_DB_URL COURTLISTENER_TOKEN ANTHROPIC_API_KEY PRIVATE_TERMS; do
+          for v in SUPABASE_DB_URL COURTLISTENER_TOKEN ANTHROPIC_API_KEY PRIVATE_TERMS EXCLUDE_FACILITIES RENDER_API_KEY; do
             if [ -z "${!v}" ]; then echo "::error::Repository secret $v is not set."; exit 1; fi
           done
           export PRIVATE_TERMS_PATH="$RUNNER_TEMP/terms.txt"
           umask 077
           printf '%s\n' "$PRIVATE_TERMS" > "$PRIVATE_TERMS_PATH"
+          python -m src.pipeline.preflight        # PASS / FAIL lines only; stops here when an input is missing
+          extra=""
+          if [ "$PUBLISH_CHANGELOG" = "true" ]; then extra="--publish-changelog"; fi
           set +e
-          python -m src.pipeline.daily3 --live --publish > "$RUNNER_TEMP/daily3.log" 2>&1
+          python -m src.pipeline.daily3 --live --publish $extra > "$RUNNER_TEMP/daily3.log" 2>&1
           rc=$?
           set -e
           rm -f "$PRIVATE_TERMS_PATH"
-          grep -E '^(   (PASS|FAIL) |Budget:|Publish:|Diff vs)' "$RUNNER_TEMP/daily3.log" || echo "no summary lines (see exit code)"
+          grep -E '^(Pre-flight|   (PASS|FAIL) |Budget:|Publish:|Diff vs)' "$RUNNER_TEMP/daily3.log" || echo "no summary lines (see exit code)"
           exit $rc

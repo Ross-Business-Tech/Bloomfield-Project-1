@@ -38,7 +38,8 @@ STATIC_FILES = {"app.js": "application/javascript; charset=utf-8", "app.css": "t
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'none'")
-SNAPSHOT_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+SNAPSHOT_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules",
+                 "changelog")
 OPEN_PATHS = {"/healthz", "/robots.txt"}
 
 

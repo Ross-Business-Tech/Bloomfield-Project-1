@@ -133,6 +133,20 @@ button.chip { cursor: help; }
 .chip.buyer-confirmed { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
 .chip.buyer-candidate { border: 1px dashed var(--primary); color: var(--primary); font-weight: 600; }
 .chip.buyer-inferred { border-style: dotted; color: var(--muted); }
+.asof a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.asof a:hover { color: var(--primary); }
+.kpis.cl-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 28px; }
+@media (max-width: 720px) { .kpis.cl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cl-tiles .kpi.click { cursor: pointer; }
+.cl-tiles .kpi.click:hover dd, .cl-tiles .kpi.on dd { color: var(--primary); }
+.cl-tiles .kpi.on { box-shadow: inset 0 -3px 0 var(--primary); }
+.cl-tiles .value.two { display: block; font-size: 24px; line-height: 1.25; }
+.cl-tiles .value.two span { display: block; white-space: nowrap; }
+table.grid.cl td .place { display: block; font-weight: 400; font-size: 13.5px; margin-top: 2px; }
+table.grid.cl .nowrap { white-space: nowrap; }
+table.grid.cl .chip.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+ul.gates { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13.5px; color: var(--muted); display: grid; gap: 4px; min-width: 260px; }
+ul.gates li.bad { color: var(--primary); font-weight: 600; }
 .chip.buyer-inferred_portfolio { border: 1px dotted var(--primary); color: var(--primary); }
 .hud .hud-buyers dd { font-size: 24px; line-height: 1.25; }
 .hud .hud-buyers dd span { display: block; white-space: nowrap; }

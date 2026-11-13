@@ -32,8 +32,9 @@ create table if not exists raw.refresh_runs (
   reviewed      boolean not null default true,   -- false: a new top-20 lead or a stage change went out unreviewed
   published     boolean not null default false,
   state         jsonb not null default '{}',     -- {lead_count, stages: {lead_id: stage}, top20: [...]} for the next diff
-  note          text
-);
+  note          text,
+  changelog     jsonb                            -- daily checks of the last 30 days with their public change rows
+);                                               -- (src.pipeline.changelog); a removed lead is a count, never a name
 create index if not exists refresh_runs_started on raw.refresh_runs (job, started_at desc);
 
 -- Every CourtListener HTTP call (retries included) made by daily3 and the case-list downloader. daily3 enforces

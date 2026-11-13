@@ -375,6 +375,26 @@ class Store:
             return dict(snapshot_state(snap), label=f"published {snap.get('generated_at')}"), PUBLISHED.name
         return None, "none"
 
+    def changelog_history(self) -> tuple[list, str]:
+        """Earlier daily checks (run entries with their rows, last 30 days). Live runs keep it in the run log; a dry
+        run only reads it and never adds to it, so repeated dry runs keep the same check number."""
+        if self.table_ok:
+            r = self.conn.execute("select changelog from raw.refresh_runs where mode = 'live' and status in "
+                                  "('published', 'no_change') and changelog is not null "
+                                  "order by started_at desc limit 1").fetchone()
+            if r and r["changelog"]:
+                return list(r["changelog"]), "raw.refresh_runs"
+        return [], "none (first check)"
+
+    def changelog_baseline(self, history: list, prev: dict | None) -> tuple[dict | None, str]:
+        """What tonight's rows are measured against: the last run's list; for the very first check, the hand-over
+        list (output/changelog_baseline_state.json, made by `python -m src.pipeline.changelog`) when it exists."""
+        p = OUTPUT_DIR / "changelog_baseline_state.json"
+        if not history and p.exists():
+            st = json.loads(p.read_text())
+            return st, f"{p.name} ({st.get('label', '')}, {st.get('lead_count')} leads)"
+        return prev, (prev or {}).get("label", "nothing")
+
     def cl_history(self) -> tuple[list, dict]:
         """Earlier CourtListener calls (rolling 24 h) from every record: raw.courtlistener_calls, the sale-check
         job's core.sale_check, and (dry run / before the table exists) the local dry-run call log."""
@@ -413,7 +433,8 @@ class Store:
                 "cursor = excluded.cursor, queue = excluded.queue, updated_at = now(), updated_by_run = excluded.updated_by_run",
                 (sid, ck, Jsonb(v.get("cursor") or {}), Jsonb(v.get("queue") or []), run["run_id"]))
         cols = ["run_id", "mode", "status", "started_at", "finished_at", "new_leads", "stage_changed", "dropped",
-                "lead_count", "gates", "budget", "changes", "queued", "reviewed", "published", "state", "note"]
+                "lead_count", "gates", "budget", "changes", "queued", "reviewed", "published", "state", "note",
+                "changelog"]
         vals = [Jsonb(run[c]) if isinstance(run.get(c), (dict, list)) else run.get(c) for c in cols]
         self.conn.execute(f"insert into raw.refresh_runs ({', '.join(cols)}) values ({', '.join(['%s'] * len(cols))})",
                           vals)
@@ -767,7 +788,10 @@ def run_tests() -> tuple[bool, str]:
 def gates(cand: dict, prev: dict | None, run_tests_too: bool = True) -> dict:
     out = {}
     out["tests"] = run_tests() if run_tests_too else (True, "skipped (--skip-tests)")
-    out["leak_scan"] = leak_scan(cand, os.environ.get("PRIVATE_TERMS_PATH"))
+    from src.pipeline import preflight
+    pf = preflight.problems()
+    out["preflight"] = (not pf, "exclusion list, term list and Render key present" if not pf else "; ".join(pf))
+    out["leak_scan"] = leak_scan(cand, str(preflight.terms_path()))
     out["source_links"] = links_ok(cand)
     out["lead_count"] = lead_count_ok((prev or {}).get("lead_count"), len(cand.get("items") or []))
     size = packed_size(cand)
@@ -781,19 +805,16 @@ def gates(cand: dict, prev: dict | None, run_tests_too: bool = True) -> dict:
 # ── portability ─────────────────────────────────────────────────────────────────────────────────────────────────
 def portability() -> list[str]:
     """Files outside Supabase + the network that a run still reads (blocking in a fresh cloud checkout)."""
-    from src.web.publish import EXCLUDE_FILE
-    out = []
-    if not os.environ.get("PRIVATE_TERMS_PATH"):
-        out.append("PRIVATE_TERMS_PATH (private term list) not set: leak gate cannot pass")
+    from src.pipeline import preflight
+    out = [f"pre-flight: {p}" for p in preflight.problems()]
     out += [
-        f"{EXCLUDE_FILE.relative_to(PROJECT_ROOT)}: past-deal homes left out of the snapshot / List C and checked by "
-        "publish (laptop only; without it those homes would be published)",
+        "exclusion list, term list and Render key: read from the environment (EXCLUDE_FACILITIES, PRIVATE_TERMS_PATH, "
+        "RENDER_API_KEY) or the laptop files; a publish run stops before any work when one is missing or empty",
         "output/INTERNAL_watch_*.csv: the snapshot's Explore (watch list) reads the latest CSV; a cloud run must run "
         "`python -m src.score` export in the same job first",
-        "eval/private/forbidden_terms.txt: src.web.publish (--confirm) runs its own leak check from this fixed path, "
-        "not PRIVATE_TERMS_PATH",
         "output/site_snapshot.uploaded.b64: baseline for the first live run only (afterwards raw.refresh_runs.state)",
-        ".env file: src.web.publish reads RENDER_API_KEY from .env, not from the environment",
+        "output/changelog_baseline_state.json: the Nov 11 list the FIRST change log is compared with (laptop only; "
+        "without it the first check compares with the last published list)",
     ]
     return out
 
@@ -810,9 +831,21 @@ def main(argv=None) -> int:
     ap.add_argument("--roundup-unverified", action="store_true",
                     help="apply the roundup rule (buyer from a roundup article -> Unverified, leaves List A). "
                          "OFF by default: it changes the published counts (Nov 13 dry run: 3 shown buyers affected)")
+    ap.add_argument("--publish-changelog", action="store_true",
+                    help="include the change log in the published snapshot. OFF by default: the change log is built "
+                         "and written to the run output, but the site does not show it")
     a = ap.parse_args(argv)
     if a.publish and not a.live:
         ap.error("--publish needs --live")
+    from src.pipeline import changelog as cl
+    from src.pipeline import preflight
+    pf = preflight.check()
+    print("Pre-flight")
+    for r in pf:
+        print(f"   {'PASS' if r['pass'] else 'FAIL'}  {r['name']:15} {r['detail']}")
+    if a.publish and not all(r["pass"] for r in pf):
+        print("Publish: NO (blocked by pre-flight; the run stops before any work)")
+        return 2
     from src.common.db import connect
     started = datetime.now(timezone.utc)
     run_id = str(uuid.uuid4())
@@ -865,10 +898,12 @@ def main(argv=None) -> int:
             log(f"   {k}: {json.dumps(v, default=str)}")
 
         if a.dry_run:
-            from src.web.server import load_snapshot
-            if not PUBLISHED.exists():
-                raise SystemExit(f"dry run needs the last upload {PUBLISHED} as its base snapshot")
-            base = load_snapshot(str(PUBLISHED))
+            # candidate = the list as the current code builds it from the database (read only), written to the
+            # dry-run folder only; tonight's findings are then applied in memory
+            from src.web import snapshot as websnap
+            DRYRUN_DIR.mkdir(parents=True, exist_ok=True)
+            websnap.main(["--out", str(DRYRUN_DIR / "candidate_snapshot.json")])
+            base = json.loads((DRYRUN_DIR / "candidate_snapshot.json").read_text())
             log(f"   LLM: dry run makes no API calls; {len(docs)} documents would be sent "
                 f"(estimate ${budget.llm_estimated:.4f} of ${budget.llm_cap:.2f})")
         else:
@@ -879,6 +914,18 @@ def main(argv=None) -> int:
         cand = apply_changes(base, changes, unverified if a.roundup_unverified else {}) if a.dry_run else base
         cstate = snapshot_state(cand)
         d = diff_states(prev, cstate)
+        # change log (public set only; a lead that left the list is a count, never a row)
+        history, hist_src = store.changelog_history()
+        run_no = cl.next_number(history)
+        cl_prev, cl_prev_src = store.changelog_baseline(history, prev)
+        day = started.astimezone(cl.ET).date().isoformat()
+        cl_rows, cl_removed = cl.rows_between(cl_prev, cand, day, run_no)
+        checked = {"dockets_read": ft.get("dockets_read"), "epiq_pages": ft.get("epiq_pages"),
+                   "sale_steps_found": ft.get("findings"), "new_dockets": len(new_cases), "new_articles": len(docs),
+                   "courtlistener_calls": budget.cl_used}
+        n_leads = len(cand.get("items") or [])
+        cand["changelog"] = cl.build(history, cl.run_entry(run_no, started, "pending", cl_rows, cl_removed, {},
+                                                           checked, n_leads), cl_rows, cand, started)
         g = gates(cand, prev, not a.skip_tests)
         all_pass = all(v["pass"] for v in g.values())
         applied = [c for c in changes if c.kind == "stage_changed"]
@@ -891,9 +938,23 @@ def main(argv=None) -> int:
                                                  "no_change" if not (d["new"] or d["dropped"] or d["stage_changed"]
                                                                      or d["buyer_changed"]) else
                                                  "dry_run" if a.dry_run else "ready")
+        entry = cl.run_entry(run_no, started, "published" if publish else status, cl_rows, cl_removed, g, checked, n_leads)
+        cand["changelog"] = cl.build(history, entry, cl_rows, cand, started)
+        for name, res in (("leak_scan", leak_scan(cand, str(preflight.terms_path()))),      # re-check with the final block
+                          ("snapshot_size", (packed_size(cand) < SNAPSHOT_MAX_BYTES, f"{packed_size(cand):,} bytes (limit {SNAPSHOT_MAX_BYTES:,})"))):
+            g[name] = {"pass": bool(res[0]), "detail": res[1]}
+        if not all(v["pass"] for v in g.values()):
+            all_pass, publish, status = False, False, "blocked"
+        cl_file = (DRYRUN_DIR if a.dry_run else OUTPUT_DIR) / "daily3_changelog.json"
+        cl_file.parent.mkdir(parents=True, exist_ok=True)
+        cl_file.write_text(json.dumps(cand["changelog"], ensure_ascii=False, indent=1, default=str))
+        if a.dry_run:                                   # local preview file: the candidate with its change log
+            from src.web.snapshot import packed
+            (DRYRUN_DIR / "candidate_snapshot.b64").write_bytes(packed(cand))
         if publish:
             from src.web import publish as pub
-            pub_rc = pub.main(["--confirm"] + (["--roundup-unverified"] if a.roundup_unverified else []))
+            pub_rc = pub.main(["--confirm"] + (["--roundup-unverified"] if a.roundup_unverified else [])
+                              + (["--changelog", str(cl_file)] if a.publish_changelog else []))
             status = "published" if pub_rc == 0 else "failed"
         run = {"run_id": run_id, "mode": "dry_run" if a.dry_run else "live", "status": status,
                "started_at": started.isoformat(), "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -908,6 +969,7 @@ def main(argv=None) -> int:
                           "llm_cap_usd": budget.llm_cap},
                "changes": [asdict(c) for c in changes], "queued": budget.queued, "reviewed": reviewed,
                "published": status == "published", "state": cstate,
+               "changelog": cl.history_after(history, dict(entry, status=status), cl_rows, started),
                "note": json.dumps({"needs_human_click": human, "diff": d, "roundup_buyers_unverified": unverified,
                                    "follow_through": ft, "courtlistener_search": cl_stats, "news": news_stats,
                                    "portability_blockers": portability()}, default=str)}
@@ -928,6 +990,12 @@ def main(argv=None) -> int:
         f"${budget.llm_estimated:.4f} estimated (cap ${budget.llm_cap:.2f}); queued {len(budget.queued)}")
     for q in budget.queued[:10]:
         log(f"   queued {q['kind']}: {q['key']} ({q['why']})")
+    c = cand["changelog"]
+    log(f"Change log: {c['updated_et']} · Daily check #{c['check_no']}; leads {c['leads']} ({c['leads_delta']:+d} vs "
+        f"{c['baseline']['label']}); buyers {c['buyers_named']} named, {c['buyers_inferred']} inferred; this check: "
+        f"{entry['stages_changed']} stages changed, {entry['buyers_changed']} buyer changes, {entry['new']} new, "
+        f"{entry['removed']} removed; rows shown {len(c['rows'])}; compared with {cl_prev_src}; history {hist_src}; "
+        f"{'INCLUDED in the publish' if a.publish_changelog else 'not published (needs --publish-changelog)'}")
     log(f"Publish: {'yes' if status == 'published' else 'NO'} ({status}); reviewed={str(reviewed).lower()}")
     log("Portability (files a run still needs besides Supabase + network):")
     for p in portability():
