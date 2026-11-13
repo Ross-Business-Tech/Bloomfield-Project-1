@@ -21,6 +21,19 @@ from dataclasses import dataclass
 ROUNDUP_TITLE = re.compile(r"\b(dealbook|deal sheet|transactions and financings|transactions roundup|deal roundup)\b", re.I)
 SPLIT_SOURCES = ("shn_rss", "snn_rss", "shb_rss", "mcknights_sl_rss", "mcknights_ltc_rss")
 MIN_ITEM_CHARS = 150
+# Multi-property article (Nov 12, 2026 rule): a buyer read from one is shown as 'Unverified'. Wider than ROUNDUP_TITLE
+# (which decides what gets split) so that deal digests that are not split still count.
+ROUNDUP_WORDS = re.compile(r"\b(dealbook|deal sheet|roundup|round-up|deals? of the week|transactions and financings|"
+                           r"deal digest|deal recap)\b", re.I)
+
+
+def is_roundup(source_url: str | None, title: str | None = None) -> bool:
+    """A split deal child ('#deal-N') or a roundup title / URL slug. Body sections alone are NOT used: long feature
+    articles have headings too (Nov 12 dry run: 2 of 5 body-only hits were features, not roundups)."""
+    if source_url and re.search(r"#deal-\d+$", source_url):
+        return True
+    slug = re.sub(r"[-_/]+", " ", source_url or "")
+    return bool(ROUNDUP_WORDS.search(title or "") or ROUNDUP_WORDS.search(slug))
 
 
 @dataclass

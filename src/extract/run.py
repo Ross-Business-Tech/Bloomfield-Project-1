@@ -26,7 +26,8 @@ CHARS_PER_TOKEN = 3.6          # assumption for English news text; checked again
 EXPECTED_OUTPUT_TOKENS = 450   # assumption; measured on the eval set
 
 
-def pending_documents(conn, model: str, limit: int | None) -> list[dict]:
+def pending_documents(conn, model: str, limit: int | None, doc_ids: list[int] | None = None) -> list[dict]:
+    """doc_ids: only these raw.document ids (the nightly refresh sends tonight's new articles, never the backlog)."""
     sql = """
         select d.id, d.source_id, d.source_url, d.title, d.body_text, d.content_hash
         from raw.document d
@@ -34,9 +35,11 @@ def pending_documents(conn, model: str, limit: int | None) -> list[dict]:
                           and e.prompt_version = %(pv)s and e.fields->>'status' = 'extracted')
           and not exists (select 1 from stg.extraction e where e.document_id = d.id and e.model = 'prefilter'
                           and e.prompt_version = %(pfv)s)
+    """ + (" and d.id = any(%(ids)s)" if doc_ids is not None else "") + """
         order by d.id
     """ + (" limit %(limit)s" if limit else "")
-    return conn.execute(sql, {"model": model, "pv": PROMPT_VERSION, "pfv": PREFILTER_VERSION, "limit": limit}).fetchall()
+    return conn.execute(sql, {"model": model, "pv": PROMPT_VERSION, "pfv": PREFILTER_VERSION, "limit": limit,
+                              "ids": list(doc_ids or [])}).fetchall()
 
 
 def db_cached(conn, model: str, hashes: list[str]) -> dict[str, dict]:
@@ -67,8 +70,8 @@ def _row(doc_id, model, pv, fields, not_found):
 
 
 def run(conn, model: str = cl.DEFAULT_MODEL, limit: int | None = None, dry_run: bool = False,
-        use_batch: bool | None = None, budget: float = BUDGET_USD, log=print) -> dict:
-    docs = pending_documents(conn, model, limit)
+        use_batch: bool | None = None, budget: float = BUDGET_USD, log=print, doc_ids: list[int] | None = None) -> dict:
+    docs = pending_documents(conn, model, limit, doc_ids)
     stats = {"pending": len(docs), "skipped_prefilter": 0, "from_cache": 0, "extracted": 0, "errors": 0,
              "api_usd": 0.0}
     to_skip, to_send = [], []

@@ -35,9 +35,8 @@ EXCLUDE_FILE = PROJECT_ROOT / "eval" / "private" / "exclude_facilities_PRIVATE.t
 
 
 def excluded() -> set[str]:
-    if not EXCLUDE_FILE.exists():
-        return set()
-    return {x.strip() for x in EXCLUDE_FILE.read_text().splitlines() if x.strip() and not x.startswith("#")}
+    from src.pipeline import preflight          # env first (CI secret), else the laptop file
+    return set(preflight.exclusion_ids()[0])
 
 
 def merged_count(deals: dict, deal_homes: dict) -> int:

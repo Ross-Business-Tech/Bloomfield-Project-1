@@ -208,6 +208,29 @@
     </div>
   </main>
 
+  <!-- Change log (only reachable when the snapshot carries one: see src/pipeline/changelog.py) -->
+  <main class="view hidden" id="view-changes">
+    <div class="wrap">
+      <header class="page-head">
+        <p class="eyebrow" id="cl-head"></p>
+        <h1>What changed</h1>
+        <p class="lede">Every daily check re-reads the public sources. This page shows what moved on the lead list, with the reason and the source for each change.</p>
+      </header>
+      <section aria-label="Change summary">
+        <dl class="kpis cl-tiles" id="cl-tiles"></dl>
+      </section>
+      <div class="filters">
+        <div class="seg" id="cl-period" role="group" aria-label="Period"></div>
+        <div class="seg" id="cl-mode" role="group" aria-label="View"></div>
+      </div>
+      <div class="result-row"><span id="cl-count" class="muted" role="status"></span></div>
+      <div class="table-wrap"><table class="grid cl" id="cl-table"><thead id="cl-thead"></thead><tbody id="cl-tbody"></tbody></table></div>
+      <div class="empty hidden" id="cl-empty"><p class="state-title">Nothing changed in this period.</p>
+        <p class="muted">The sources were checked and the list stayed the same.</p></div>
+      <div class="pager" id="cl-pager"></div>
+    </div>
+  </main>
+
   <div class="scrim hidden" id="scrim"></div>
   <aside class="panel hidden" id="panel" role="dialog" aria-modal="true" aria-labelledby="p-title" aria-hidden="true">
     <div class="panel-head">

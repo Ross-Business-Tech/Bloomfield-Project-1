@@ -72,6 +72,8 @@ def buyer_group(r: dict) -> str:
         return INFERRED_PORTFOLIO
     if "(unnamed)" in (r.get("buyer") or "").lower():          # a placeholder, never a named buyer
         return "candidate" if st in ("candidate", "named") else "inferred"
+    if st == "Unverified":                                      # buyer read from a multi-property roundup article
+        return "inferred"
     if st == "named" and bd.get("buyer_parent_basis") != "brand_match":
         return "confirmed"
     if st == "candidate":
@@ -142,9 +144,9 @@ def phone_text(digits) -> str | None:
 
 
 def excluded() -> set[str]:
-    if not EXCLUDE_FILE.exists():
-        return set()
-    return {ln.strip() for ln in EXCLUDE_FILE.read_text().splitlines() if ln.strip() and not ln.startswith("#")}
+    """Past-deal homes left off the site: EXCLUDE_FACILITIES / EXCLUDE_FACILITIES_PATH, else the laptop file."""
+    from src.pipeline import preflight
+    return set(preflight.exclusion_ids()[0])
 
 
 def public_link(url) -> str | None:
@@ -192,6 +194,8 @@ def other_reason(r: dict) -> str | None:
     st = r.get("buyer_status")
     if st == INFERRED_PORTFOLIO:
         return INFERRED_PORTFOLIO          # buyer of a portfolio-wide sale; the source does not name this home
+    if st == "Unverified":
+        return "unverified_buyer"          # buyer read from a multi-property roundup article (--roundup-unverified)
     if st == "candidate":
         return "candidate"                 # stalking-horse / proposed bidder
     if st == "stale":
@@ -218,7 +222,7 @@ def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dic
     for r in items_rows:
         groups[r.get("buyer_group") or buyer_group(r)] += 1
     return {"leads": len(items_rows), "list_a": a, "list_b": b, "other": sum(reasons.values()),
-            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", INFERRED_PORTFOLIO, "shell_or_closed")},
+            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", INFERRED_PORTFOLIO, "unverified_buyer", "shell_or_closed")},
             "buyers_named": groups["confirmed"], "buyers_inferred_portfolio": groups[INFERRED_PORTFOLIO],
             "list_c_buyers": len(list_c_rows), "list_c_linked_leads": linked_leads}
 
@@ -422,7 +426,8 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
     ]
 
 
-UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules",
+               "changelog")     # changelog: only present when a daily check passes --changelog (src.pipeline.changelog)
 UPLOAD_LIMIT = 950_000        # Render: all Secret Files of a service together must stay under 1 MB
 
 
@@ -450,6 +455,23 @@ def write(snap: dict, out: Path) -> None:
             w.writerows(snap[key])
 
 
+def roundup_unverified(conn, rows: list[dict]) -> int:
+    """Nov 12 rule (nightly refresh, opt-in with --roundup-unverified): a buyer whose public source is a multi-property
+    roundup article is shown as 'Unverified' (Unverified group, not List A). Returns how many rows changed."""
+    from src.extract.split import is_roundup
+    urls = sorted({r["buyer_source_url"] for r in rows if r.get("buyer_source_url")})
+    titles = {x["u"]: x["t"] for x in conn.execute("select source_url u, title t from raw.document where source_url = any(%s)",
+                                                   (urls,)).fetchall()} if urls else {}
+    n = 0
+    for r in rows:
+        u = r.get("buyer_source_url")
+        if u and r.get("buyer") not in (None, NF) and r.get("buyer_status") != "Unverified" and is_roundup(u, titles.get(u)):
+            r["buyer_status"] = "Unverified"
+            r["flags"] = list(r.get("flags") or []) + ["buyer_from_roundup"]
+            n += 1
+    return n
+
+
 def fetch_geo(conn) -> dict:
     """{facility_id: {lat, lon, coord_source}} from core.facility_geo; {} before its migration."""
     try:
@@ -475,6 +497,10 @@ def main(argv=None) -> int:
     from src.common.db import connect
     ap = argparse.ArgumentParser(prog="python -m src.web.snapshot")
     ap.add_argument("--out", type=Path, default=OUTPUT_DIR / "site_snapshot.json")
+    ap.add_argument("--roundup-unverified", action="store_true",
+                    help="show buyers read from roundup articles as Unverified (nightly refresh rule; off by default)")
+    ap.add_argument("--changelog", type=Path, default=None,
+                    help="JSON file with the daily check's change log (src.pipeline.changelog); off by default")
     a = ap.parse_args(argv)
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
@@ -490,6 +516,8 @@ def main(argv=None) -> int:
             r["extra_links"] = more.get(str(r["facility_id"]))
             if {"sale_approved", "sale_closed"} & set(r.get("flags") or []):
                 r["sale_status"] = sale.get(str(r["facility_id"]))
+        if a.roundup_unverified:
+            print(f"roundup rule: {roundup_unverified(conn, rows)} buyers from roundup articles shown as Unverified")
     skip = excluded()
     snap = build(rows, skip, contacts, geo)
     with connect() as conn:
@@ -510,6 +538,8 @@ def main(argv=None) -> int:
         snap["funnel"] = funnel(conn, snap, len(explore))
         snap["sources_table"] = source_rows(conn)
         snap["rules"] = rules_block()
+    if a.changelog:
+        snap["changelog"] = json.loads(a.changelog.read_text())
     write(snap, a.out)
     print(f"snapshot: {snap['counts']} -> {a.out}; upload {a.out.with_suffix('.b64').name} "
           f"({a.out.with_suffix('.b64').stat().st_size:,} bytes) as the Render Secret File (gitignored, never commit)")
