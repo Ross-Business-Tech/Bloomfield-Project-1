@@ -456,7 +456,7 @@
   const CL = { period: "run", mode: "changes", kind: "", page: 1 };
   const CL_PERIODS = [["run", "Last check"], ["7", "7 days"], ["30", "30 days"]];
   const CL_KINDS = { stage: "stage changes", buyer: "buyer changes", new_lead: "new leads" };
-  const CL_STATUS = { published: "Published", no_change: "No change", blocked: "Blocked by a check", dry_run: "Trial run (not published)", ready: "Ready", failed: "Failed", pending: "Running" };
+  const CL_STATUS = { passed: "All checks passed", published: "Published", no_change: "No change", blocked: "Blocked by a check", dry_run: "Trial run (not published)", ready: "Ready", failed: "Failed", pending: "Running" };
   const GATE_LABEL = { preflight: "Private inputs present", tests: "Tests", leak_scan: "Leak scan", source_links: "Source link on every lead", lead_count: "Lead count within limits", snapshot_size: "File size", consistency: "Counts agree" };
   const CHECKED_LABEL = { dockets_read: "court dockets read", epiq_pages: "claims-agent pages", sale_steps_found: "sale steps found", new_dockets: "new dockets", new_articles: "new articles", courtlistener_calls: "CourtListener calls" };
   function clRuns() {
@@ -473,6 +473,7 @@
     if (!c) return;
     const label = "Updated " + c.updated_et + " · Daily check #" + c.check_no;
     $("asof").replaceChildren(el("a", { href: "#/changes", text: label, title: "See what changed" }));
+    $("asof").classList.add("has-log");
     $("cl-head").textContent = label;
     renderChanges();
   }

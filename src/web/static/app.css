@@ -158,8 +158,9 @@ ul.gates li.bad { color: var(--primary); font-weight: 600; }
 [data-tip] { cursor: help; }
 .tip { position: fixed; z-index: 80; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; border-radius: 6px; background: var(--primary); color: var(--on-primary);
   font-size: 14px; line-height: 1.45; box-shadow: var(--shadow); pointer-events: none; }
-.stage { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; color: var(--primary); white-space: nowrap; }
-.pips { display: inline-flex; gap: 3px; }
+.stage { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; color: var(--primary); max-width: 100%; min-width: 0; }
+.stage > span:last-child { min-width: 0; overflow-wrap: anywhere; }     /* long stage text wraps inside its card or row */
+.pips { display: inline-flex; gap: 3px; flex: none; }
 .pips i { width: 14px; height: 5px; border-radius: 1px; background: var(--line); }
 .pips i.on { background: var(--primary); }
 .buyerline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14.5px; min-width: 0; }
@@ -508,6 +509,7 @@ details.more summary { cursor: pointer; padding: 10px 0; color: var(--accent); f
   .topbar-in { flex-wrap: wrap; gap: 0 8px; padding: 6px var(--gutter) 8px; }
   .brand { flex: 1; font-size: 18px; }
   .asof { display: none; }
+  .asof.has-log { display: block; order: 4; flex: 1 0 100%; padding-top: 6px; white-space: normal; }   /* change-log link stays visible */
   .nav { order: 2; flex: 0 0 auto; margin: 0; padding: 0; }
   .search { order: 3; flex: 1 0 100%; max-width: none; }
   .card-actions { grid-template-columns: 1fr; }

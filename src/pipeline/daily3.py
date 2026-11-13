@@ -386,14 +386,42 @@ class Store:
                 return list(r["changelog"]), "raw.refresh_runs"
         return [], "none (first check)"
 
+    @staticmethod
+    def handover_state() -> tuple[dict | None, str]:
+        """The hand-over (Nov 11) list: CHANGELOG_BASELINE_B64 (gzip + base64 of the JSON; a CI secret), else
+        output/changelog_baseline_state.json made by `python -m src.pipeline.changelog`."""
+        raw = (os.environ.get("CHANGELOG_BASELINE_B64") or "").strip()
+        if raw:
+            return json.loads(gzip.decompress(base64.b64decode(raw))), "CHANGELOG_BASELINE_B64"
+        p = OUTPUT_DIR / "changelog_baseline_state.json"
+        return (json.loads(p.read_text()), p.name) if p.exists() else (None, "missing")
+
     def changelog_baseline(self, history: list, prev: dict | None) -> tuple[dict | None, str]:
         """What tonight's rows are measured against: the last run's list; for the very first check, the hand-over
-        list (output/changelog_baseline_state.json, made by `python -m src.pipeline.changelog`) when it exists."""
-        p = OUTPUT_DIR / "changelog_baseline_state.json"
-        if not history and p.exists():
-            st = json.loads(p.read_text())
-            return st, f"{p.name} ({st.get('label', '')}, {st.get('lead_count')} leads)"
+        list when it is available."""
+        st, src = self.handover_state()
+        if not history and st:
+            return st, f"{src} ({st.get('label', '')})"
         return prev, (prev or {}).get("label", "nothing")
+
+    def excluded_lead_ids(self) -> set[str]:
+        """Lead ids of the confidential exclusions (the list holds building ids). Read only."""
+        from src.pipeline import preflight
+        ids = preflight.exclusion_ids()[0]
+        if not ids:
+            return set()
+        return {str(r["lead_id"]) for r in self.conn.execute(
+            "select lead_id from app.lead where facility_id::text = any(%s)", (ids,)).fetchall()}
+
+    def insert_run(self, run: dict) -> None:
+        from psycopg.types.json import Jsonb
+        cols = ["run_id", "mode", "status", "started_at", "finished_at", "new_leads", "stage_changed", "dropped",
+                "lead_count", "gates", "budget", "changes", "queued", "reviewed", "published", "state", "note",
+                "changelog"]
+        vals = [Jsonb(run[c]) if isinstance(run.get(c), (dict, list)) else run.get(c) for c in cols]
+        self.conn.execute(f"insert into raw.refresh_runs ({', '.join(cols)}) values ({', '.join(['%s'] * len(cols))})",
+                          vals)
+        self.conn.commit()
 
     def cl_history(self) -> tuple[list, dict]:
         """Earlier CourtListener calls (rolling 24 h) from every record: raw.courtlistener_calls, the sale-check
@@ -432,13 +460,7 @@ class Store:
                 "values (%s, %s, %s, %s, %s) on conflict (source_id, cursor_key) do update set "
                 "cursor = excluded.cursor, queue = excluded.queue, updated_at = now(), updated_by_run = excluded.updated_by_run",
                 (sid, ck, Jsonb(v.get("cursor") or {}), Jsonb(v.get("queue") or []), run["run_id"]))
-        cols = ["run_id", "mode", "status", "started_at", "finished_at", "new_leads", "stage_changed", "dropped",
-                "lead_count", "gates", "budget", "changes", "queued", "reviewed", "published", "state", "note",
-                "changelog"]
-        vals = [Jsonb(run[c]) if isinstance(run.get(c), (dict, list)) else run.get(c) for c in cols]
-        self.conn.execute(f"insert into raw.refresh_runs ({', '.join(cols)}) values ({', '.join(['%s'] * len(cols))})",
-                          vals)
-        self.conn.commit()
+        self.insert_run(run)
         if calls:
             with self.conn.cursor() as cur:
                 cur.executemany("insert into raw.courtlistener_calls (called_at, job, run_id, method, endpoint, query, "
@@ -826,6 +848,9 @@ def main(argv=None) -> int:
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--live", action="store_true")
+    mode.add_argument("--record-publish", action="store_true",
+                      help="after a publish made by hand from the last dry run: store that check in the run log, so "
+                           "the next run counts on from it and compares with what is live")
     ap.add_argument("--publish", action="store_true", help="live only: upload when every gate passes")
     ap.add_argument("--skip-tests", action="store_true", help="debug only: the tests gate then reports 'skipped'")
     ap.add_argument("--roundup-unverified", action="store_true",
@@ -837,6 +862,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if a.publish and not a.live:
         ap.error("--publish needs --live")
+    if a.record_publish:
+        return record_publish()
     from src.pipeline import changelog as cl
     from src.pipeline import preflight
     pf = preflight.check()
@@ -913,11 +940,18 @@ def main(argv=None) -> int:
         unverified = roundup_buyers(conn, [r["lead_id"] for r in base.get("items") or []])
         cand = apply_changes(base, changes, unverified if a.roundup_unverified else {}) if a.dry_run else base
         cstate = snapshot_state(cand)
+        # confidential exclusions are taken out of every list tonight is compared with (the hand-over baseline too):
+        # such a home never shows as a change and is never counted as removed
+        hidden = store.excluded_lead_ids()
+        prev = cl.without(prev, hidden)
         d = diff_states(prev, cstate)
         # change log (public set only; a lead that left the list is a count, never a row)
         history, hist_src = store.changelog_history()
         run_no = cl.next_number(history)
         cl_prev, cl_prev_src = store.changelog_baseline(history, prev)
+        cl_prev = cl.without(cl_prev, hidden)
+        handover = cl.without(store.handover_state()[0], hidden)
+        base_n = (handover or {}).get("lead_count")
         day = started.astimezone(cl.ET).date().isoformat()
         cl_rows, cl_removed = cl.rows_between(cl_prev, cand, day, run_no)
         checked = {"dockets_read": ft.get("dockets_read"), "epiq_pages": ft.get("epiq_pages"),
@@ -925,8 +959,12 @@ def main(argv=None) -> int:
                    "courtlistener_calls": budget.cl_used}
         n_leads = len(cand.get("items") or [])
         cand["changelog"] = cl.build(history, cl.run_entry(run_no, started, "pending", cl_rows, cl_removed, {},
-                                                           checked, n_leads), cl_rows, cand, started)
+                                                           checked, n_leads), cl_rows, cand, started, base_n)
         g = gates(cand, prev, not a.skip_tests)
+        # auto-publish rule: the top-20 order must be exactly the last published one; otherwise HOLD for a person
+        same_top = not prev or list(prev.get("top20") or []) == list(cstate["top20"])
+        g["top20_order"] = {"pass": bool(same_top), "detail": "unchanged" if same_top else
+                            "changed: HOLD, not published; a person reviews and publishes by hand"}
         all_pass = all(v["pass"] for v in g.values())
         applied = [c for c in changes if c.kind == "stage_changed"]
         # rule: a new top-20 lead or a stage change goes out unreviewed; so does a changed top-20 buyer or a
@@ -938,8 +976,9 @@ def main(argv=None) -> int:
                                                  "no_change" if not (d["new"] or d["dropped"] or d["stage_changed"]
                                                                      or d["buyer_changed"]) else
                                                  "dry_run" if a.dry_run else "ready")
-        entry = cl.run_entry(run_no, started, "published" if publish else status, cl_rows, cl_removed, g, checked, n_leads)
-        cand["changelog"] = cl.build(history, entry, cl_rows, cand, started)
+        entry = cl.run_entry(run_no, started, "published" if publish else "passed" if all_pass else "blocked",
+                             cl_rows, cl_removed, g, checked, n_leads)
+        cand["changelog"] = cl.build(history, entry, cl_rows, cand, started, base_n)
         for name, res in (("leak_scan", leak_scan(cand, str(preflight.terms_path()))),      # re-check with the final block
                           ("snapshot_size", (packed_size(cand) < SNAPSHOT_MAX_BYTES, f"{packed_size(cand):,} bytes (limit {SNAPSHOT_MAX_BYTES:,})"))):
             g[name] = {"pass": bool(res[0]), "detail": res[1]}
@@ -969,7 +1008,7 @@ def main(argv=None) -> int:
                           "llm_cap_usd": budget.llm_cap},
                "changes": [asdict(c) for c in changes], "queued": budget.queued, "reviewed": reviewed,
                "published": status == "published", "state": cstate,
-               "changelog": cl.history_after(history, dict(entry, status=status), cl_rows, started),
+               "changelog": cl.history_after(history, entry, cl_rows, started),
                "note": json.dumps({"needs_human_click": human, "diff": d, "roundup_buyers_unverified": unverified,
                                    "follow_through": ft, "courtlistener_search": cl_stats, "news": news_stats,
                                    "portability_blockers": portability()}, default=str)}
@@ -1002,6 +1041,35 @@ def main(argv=None) -> int:
         log(f"   - {p}")
     log("Written: " + ", ".join(written))
     return 0 if all_pass or a.dry_run else 1
+
+
+def record_publish() -> int:
+    """Store the last dry run as the published check (only when the live upload carries exactly that check)."""
+    from src.common.db import connect
+    from src.web.server import load_snapshot
+    p = DRYRUN_DIR / "run_log.json"
+    if not p.exists() or not PUBLISHED.exists():
+        print("record-publish: needs the last dry run's run_log.json and the uploaded snapshot")
+        return 2
+    run = json.loads(p.read_text())
+    live = (load_snapshot(str(PUBLISHED)).get("changelog") or {})
+    mine = (run.get("changelog") or [{}])[-1]
+    if not live or live.get("check_no") != mine.get("no") or live.get("updated_at") != mine.get("at"):
+        print("record-publish: the uploaded snapshot does not carry the last dry run's change log; nothing stored")
+        return 2
+    run.update(mode="live", status="published", published=True,
+               note=json.dumps({"published": "by hand from the laptop (python -m src.web.publish --confirm --changelog)"}))
+    with connect() as conn:
+        store = Store(conn, False)
+        if not store.table_ok:
+            print("record-publish: raw.refresh_runs is missing (apply the daily3 migration first)")
+            return 2
+        if conn.execute("select 1 from raw.refresh_runs where run_id = %s", (run["run_id"],)).fetchone():
+            print("record-publish: already stored")
+            return 0
+        store.insert_run(run)
+    print(f"record-publish: Daily check #{mine.get('no')} stored as published ({run['lead_count']} leads)")
+    return 0
 
 
 def _by_endpoint(calls: list[dict]) -> dict:

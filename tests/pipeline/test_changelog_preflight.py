@@ -134,6 +134,23 @@ def test_a_removed_lead_is_counted_but_never_named():
     assert [r["no"] for r in block["runs"]] == [2, 1] and block["runs"][0]["removed"] == 1
 
 
+def test_a_confidential_exclusion_is_removed_from_the_baseline_too():
+    """The past-deal home (l4) was on the hand-over list and is on the exclusion list today: it must not show as a
+    change, must not be counted as removed, and the baseline lead count is the list without it."""
+    baseline = cl.state_of(BEFORE)
+    assert cl.rows_between(baseline, AFTER, "2026-11-12", 1)[1] == 1                 # without the rule: counted
+    clean = cl.without(dict(baseline, top20=["l1", "l4"]), {"l4"})
+    rows, removed = cl.rows_between(clean, AFTER, "2026-11-12", 1)
+    assert removed == 0 and clean["lead_count"] == 3 and clean["top20"] == ["l1"]
+    assert "l4" not in str(clean) and "l4" not in str(rows) and "Left The List Home" not in str(rows)
+    entry = cl.run_entry(1, WHEN, "passed", rows, removed, {}, {}, 4)
+    block = cl.build([], entry, rows, AFTER, WHEN, baseline_leads=clean["lead_count"])
+    assert block["runs"][0]["removed"] == 0
+    assert block["baseline"]["leads"] == 3 and block["leads_delta"] == 4 - 3
+    assert cl.without(baseline, set()) is baseline and cl.without(None, {"x"}) is None
+    assert baseline["lead_count"] == 4                                                # the input is not edited
+
+
 def test_header_tiles_and_check_number():
     rows, removed = cl.rows_between(cl.state_of(BEFORE), AFTER, "2026-11-12", 1)
     entry = cl.run_entry(cl.next_number([]), WHEN, "dry_run", rows, removed, {"leak_scan": {"pass": True, "detail": "clean"}},
@@ -179,6 +196,10 @@ def test_page_and_workflow_wiring():
     assert '"Updated " + c.updated_et + " · Daily check #" + c.check_no' in js
     assert '"#/changes": "changes"' in js and 'id="view-changes"' in html and '"Checks run"' in js
     assert 'if (!c) return;' in js                                  # no change log in the snapshot: the site is unchanged
+    css = (static / "app.css").read_text()
+    assert ".asof.has-log { display: block;" in css and '$("asof").classList.add("has-log")' in js   # phone top bar
+    assert ".stage > span:last-child { min-width: 0; overflow-wrap: anywhere; }" in css                # long stage text wraps
+    assert "white-space: nowrap" not in css.split(".stage {")[1].split("}")[0]
     wf = (Path(snapshot.__file__).parents[2] / ".github" / "workflows" / "daily3.yml").read_text()
     live = [ln for ln in wf.splitlines() if not ln.strip().startswith("#")]
     assert any("workflow_dispatch" in ln for ln in live) and not any("cron" in ln or "schedule" in ln for ln in live)

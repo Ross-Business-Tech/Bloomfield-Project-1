@@ -59,6 +59,21 @@ def state_of(snap: dict) -> dict:
             "buyers": {r["lead_id"]: f"{r.get('buyer') or NF}|{r.get('buyer_status') or NF}" for r in items}}
 
 
+def without(state: dict | None, hidden_ids) -> dict | None:
+    """The same state with confidential exclusions taken out. A past-deal home is removed from EVERY list a run
+    compares with (the hand-over baseline included), so it never shows as a change and is never counted as removed."""
+    hidden = set(hidden_ids or [])
+    if not state or not hidden:
+        return state
+    out = dict(state)
+    for k in ("stages", "buyers"):
+        out[k] = {i: v for i, v in (state.get(k) or {}).items() if i not in hidden}
+    out["lead_count"] = len(out["stages"])
+    if "top20" in out:
+        out["top20"] = [i for i in out["top20"] if i not in hidden]
+    return out
+
+
 def _public(url) -> str | None:
     return url if isinstance(url, str) and url.startswith(("http://", "https://")) else None
 
@@ -125,8 +140,10 @@ def next_number(history: list[dict]) -> int:
     return max((int(e.get("no") or 0) for e in history), default=0) + 1
 
 
-def build(history: list[dict], entry: dict, rows: list[dict], cand: dict, when: datetime) -> dict:
-    """The snapshot's "changelog" block: earlier runs (last 30 days) + tonight's. history: [{run entry + 'rows'}]."""
+def build(history: list[dict], entry: dict, rows: list[dict], cand: dict, when: datetime,
+          baseline_leads: int | None = None) -> dict:
+    """The snapshot's "changelog" block: earlier runs (last 30 days) + tonight's. history: [{run entry + 'rows'}].
+    baseline_leads: size of the hand-over list after confidential exclusions are taken out (default: as published)."""
     since = (when - timedelta(days=KEEP_DAYS)).isoformat()
     past = [e for e in history if str(e.get("at") or "") >= since and e.get("no") != entry["no"]]
     shown = {r["lead_id"] for r in cand.get("items") or []}
@@ -139,7 +156,8 @@ def build(history: list[dict], entry: dict, rows: list[dict], cand: dict, when: 
     n = len(cand.get("items") or [])
     runs = sorted([{k: v for k, v in e.items() if k != "rows"} for e in past] + [entry], key=lambda e: -int(e["no"]))
     return {"updated_at": when.isoformat(timespec="seconds"), "updated_et": et_text(when), "check_no": entry["no"],
-            "baseline": dict(BASELINE), "leads": n, "leads_delta": n - BASELINE["leads"],
+            "baseline": dict(BASELINE, leads=baseline_leads or BASELINE["leads"]),
+            "leads": n, "leads_delta": n - (baseline_leads or BASELINE["leads"]),
             "buyers_named": groups.get("confirmed", 0), "buyers_inferred": groups.get("inferred_portfolio", 0),
             "reasons": {k: v for k, v in REASONS.items() if any(r["reason"] == k for r in all_rows)},
             "runs": runs, "rows": all_rows}
