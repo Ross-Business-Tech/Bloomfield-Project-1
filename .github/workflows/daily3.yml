@@ -1,27 +1,30 @@
 # Daily check of Deal Radar (src/pipeline/daily3.py): the FREE alternative to a Render cron job.
-# MANUAL START ONLY (workflow_dispatch). The daily schedule below is written but COMMENTED OUT until the team decides
-# to turn it on. Built Nov 12, 2026; dry-run tested only. No secret has been added to GitHub for it.
 #
-# Uses repository secrets only (Settings > Secrets and variables > Actions); nothing secret is in this file:
-#   SUPABASE_DB_URL      Supabase "Session pooler" connection string (GitHub runners have no IPv6)
-#   COURTLISTENER_TOKEN  CourtListener API token
-#   ANTHROPIC_API_KEY    Claude extraction (run cap: $1)
-#   PRIVATE_TERMS        the private term list (the contents of eval/private/forbidden_terms.txt); written to a temp
-#                        file for the leak gate and deleted at the end. Without it the leak gate fails = no publish.
-#   EXCLUDE_FACILITIES   the past-deal exclusion list (the ids in eval/private/exclude_facilities_PRIVATE.txt, one
-#                        per line). Without it past-deal homes would be published.
-#   RENDER_API_KEY       uploads the snapshot
-# PRE-FLIGHT: the run fails before any work or upload when EXCLUDE_FACILITIES, PRIVATE_TERMS or RENDER_API_KEY is
-# missing or empty (src/pipeline/preflight.py; values are never printed).
-# Before enabling, see the portability list printed by every run (`python -m src.pipeline.daily3 --dry-run`): the
-# watch-list CSV is still a laptop-only file. Also apply supabase/migrations/20261112000100_daily3_refresh.sql first.
+# Start: by hand (Actions > daily3 > Run workflow; "dry-run" changes nothing, "live" may publish). The daily schedule
+# below is written but COMMENTED OUT until a cloud dry run has passed.
+#
+# AUTO-PUBLISH RULE (live): the run publishes only when every gate passes AND the top-20 order is unchanged AND the
+# lead count is within 10% of the last published list. Otherwise it HOLDS (nothing is published) and the job FAILS,
+# so GitHub emails the person who owns the schedule.
+#
+# PUBLIC-REPO LOG RULE: this repository and its Actions logs are public. The job prints counts and status only:
+# the full output goes to a temp file that is never printed or uploaded, the summary lines are checked by
+# src/pipeline/log_check.py (no building or buyer names, addresses, private terms or excluded ids) before they are
+# shown, and NO data artifact is uploaded.
+#
+# Repository secrets (Settings > Secrets and variables > Actions; set from the laptop with
+# `python -m src.pipeline.cloud_inputs --pack --set`; nothing private is in this file or in the repository):
+#   SUPABASE_DB_URL, COURTLISTENER_TOKEN, ANTHROPIC_API_KEY (extraction, capped at $1 per run), RENDER_API_KEY
+#   EXCLUDE_FACILITIES_GZ_B64   past-deal exclusion list
+#   PRIVATE_TERMS_GZ_B64        private term list for the leak scan
+#   CASE_LABELS_GZ_B64          hand labels of court cases
+#   CHANGELOG_BASELINE_B64      the Nov 11 list the change log counts from
+#   WATCHLIST_GZ_B64_1..12      watch list (public rows), split because a secret holds 48 KB; WATCHLIST_NAME
+# PRE-FLIGHT: the run stops before any work when the exclusion list, the term list, the case labels or the Render
+# key is missing or empty (src/pipeline/preflight.py; values are never printed).
 #
 # CourtListener: this account allows 125 requests per rolling 24 h and 50 per hour. daily3 caps ALL logged calls at
-# 45 per rolling hour and 100 per rolling 24 h (its own, the case-list downloader's, the sale-check job's); most
-# nights it uses about 25. courtlistener-daily.yml spends at most 15 and is counted from core.sale_check.
-#
-# THIS REPOSITORY IS PUBLIC and so are Actions logs: the full run output (lead names, the needs-a-human list) goes to
-# a temp file that is never uploaded; the log shows only the gate / budget / publish lines.
+# 45 per rolling hour and 100 per rolling 24 h; courtlistener-daily.yml spends at most 15 and is counted too.
 name: daily3
 
 on:
@@ -29,10 +32,11 @@ on:
   #   - cron: "0 11 * * *"   # 11:00 UTC = 6:00 am Eastern in winter (EST), 7:00 am in summer (EDT). NOT ENABLED.
   workflow_dispatch:
     inputs:
-      publish_changelog:
-        description: "Also show the change log on the site"
-        type: boolean
-        default: false
+      mode:
+        description: "dry-run: read and check only, nothing is written or published. live: the real daily check."
+        type: choice
+        options: [dry-run, live]
+        default: dry-run
 
 permissions:
   contents: read
@@ -53,30 +57,65 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
-      - name: Nightly refresh (gated publish)
+      - run: pip install -q -r requirements.txt
+      - name: Daily check (counts and status only)
         env:
+          MODE: ${{ github.event_name == 'schedule' && 'live' || inputs.mode }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           COURTLISTENER_TOKEN: ${{ secrets.COURTLISTENER_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
-          EXCLUDE_FACILITIES: ${{ secrets.EXCLUDE_FACILITIES }}
-          PUBLISH_CHANGELOG: ${{ inputs.publish_changelog }}
+          EXCLUDE_FACILITIES_GZ_B64: ${{ secrets.EXCLUDE_FACILITIES_GZ_B64 }}
+          PRIVATE_TERMS_GZ_B64: ${{ secrets.PRIVATE_TERMS_GZ_B64 }}
+          CASE_LABELS_GZ_B64: ${{ secrets.CASE_LABELS_GZ_B64 }}
+          CHANGELOG_BASELINE_B64: ${{ secrets.CHANGELOG_BASELINE_B64 }}
+          WATCHLIST_NAME: ${{ secrets.WATCHLIST_NAME }}
+          WATCHLIST_GZ_B64_1: ${{ secrets.WATCHLIST_GZ_B64_1 }}
+          WATCHLIST_GZ_B64_2: ${{ secrets.WATCHLIST_GZ_B64_2 }}
+          WATCHLIST_GZ_B64_3: ${{ secrets.WATCHLIST_GZ_B64_3 }}
+          WATCHLIST_GZ_B64_4: ${{ secrets.WATCHLIST_GZ_B64_4 }}
+          WATCHLIST_GZ_B64_5: ${{ secrets.WATCHLIST_GZ_B64_5 }}
+          WATCHLIST_GZ_B64_6: ${{ secrets.WATCHLIST_GZ_B64_6 }}
+          WATCHLIST_GZ_B64_7: ${{ secrets.WATCHLIST_GZ_B64_7 }}
+          WATCHLIST_GZ_B64_8: ${{ secrets.WATCHLIST_GZ_B64_8 }}
+          WATCHLIST_GZ_B64_9: ${{ secrets.WATCHLIST_GZ_B64_9 }}
+          WATCHLIST_GZ_B64_10: ${{ secrets.WATCHLIST_GZ_B64_10 }}
+          WATCHLIST_GZ_B64_11: ${{ secrets.WATCHLIST_GZ_B64_11 }}
+          WATCHLIST_GZ_B64_12: ${{ secrets.WATCHLIST_GZ_B64_12 }}
         run: |
-          for v in SUPABASE_DB_URL COURTLISTENER_TOKEN ANTHROPIC_API_KEY PRIVATE_TERMS EXCLUDE_FACILITIES RENDER_API_KEY; do
+          for v in SUPABASE_DB_URL COURTLISTENER_TOKEN ANTHROPIC_API_KEY RENDER_API_KEY EXCLUDE_FACILITIES_GZ_B64 \
+                   PRIVATE_TERMS_GZ_B64 CASE_LABELS_GZ_B64 CHANGELOG_BASELINE_B64 WATCHLIST_GZ_B64_1; do
             if [ -z "${!v}" ]; then echo "::error::Repository secret $v is not set."; exit 1; fi
           done
-          export PRIVATE_TERMS_PATH="$RUNNER_TEMP/terms.txt"
           umask 077
-          printf '%s\n' "$PRIVATE_TERMS" > "$PRIVATE_TERMS_PATH"
-          python -m src.pipeline.preflight        # PASS / FAIL lines only; stops here when an input is missing
-          extra=""
-          if [ "$PUBLISH_CHANGELOG" = "true" ]; then extra="--publish-changelog"; fi
+          PRIV="$RUNNER_TEMP/private"; LOG="$RUNNER_TEMP/daily3.log"; OUT="$RUNNER_TEMP/summary.txt"
+          cleanup() { rm -rf "$PRIV" output "$LOG" "$RUNNER_TEMP/paths.env"; }
+          trap cleanup EXIT
+          # private inputs: secrets -> temp files (paths only are exported; values are never printed)
+          python -m src.pipeline.cloud_inputs --restore "$PRIV" > "$RUNNER_TEMP/paths.env" 2>/dev/null \
+            || { echo "::error::Could not restore the private inputs."; exit 1; }
+          set -a; . "$RUNNER_TEMP/paths.env"; set +a
+          # pre-flight: PASS / FAIL lines with counts only; stops here when an input is missing or empty
+          python -m src.pipeline.preflight > "$OUT" 2>/dev/null || { cat "$OUT"; echo "::error::Pre-flight failed: nothing was run."; exit 1; }
+          echo "mode: $MODE"
+          if [ "$MODE" = "live" ]; then args="--live --publish --publish-changelog"; else args="--dry-run --strict --publish-changelog"; fi
           set +e
-          python -m src.pipeline.daily3 --live --publish $extra > "$RUNNER_TEMP/daily3.log" 2>&1
+          python -m src.pipeline.daily3 $args > "$LOG" 2>&1
           rc=$?
           set -e
-          rm -f "$PRIVATE_TERMS_PATH"
-          grep -E '^(Pre-flight|   (PASS|FAIL) |Budget:|Publish:|Diff vs)' "$RUNNER_TEMP/daily3.log" || echo "no summary lines (see exit code)"
+          grep -E '^(Pre-flight|   (PASS|FAIL) |Budget:|Publish:|Diff vs|Change log:)' "$LOG" > "$OUT" || true
+          if [ "$rc" != "0" ]; then    # an error type only (never its message, which may quote data)
+            echo "exit code $rc; last error type: $(grep -oE '^[A-Za-z_.]+(Error|Exception|Exit)' "$LOG" | tail -1)" >> "$OUT"
+          fi
+          # public-repo log rule: the summary is shown only when it holds no building / buyer name, address or private term
+          snaps=""
+          for f in output/site_snapshot.json output/daily3_dryrun/candidate_snapshot.json; do
+            if [ -f "$f" ]; then snaps="$snaps --snapshot $f"; fi
+          done
+          if python -m src.pipeline.log_check "$OUT" $snaps > "$RUNNER_TEMP/logcheck.txt" 2>/dev/null; then
+            cat "$OUT"; tail -1 "$RUNNER_TEMP/logcheck.txt"
+          else
+            tail -1 "$RUNNER_TEMP/logcheck.txt"; echo "::error::Log check failed: the summary was withheld."; exit 3
+          fi
+          if [ "$rc" != "0" ]; then echo "::error::Daily check did not pass or was held: nothing new was published."; fi
           exit $rc

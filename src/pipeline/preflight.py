@@ -1,4 +1,4 @@
-"""Pre-flight check for any run that may publish: the three private inputs must be present and non-empty BEFORE any
+"""Pre-flight check for any run that may publish: the private inputs must be present and non-empty BEFORE any
 work starts, otherwise the run fails and nothing is uploaded.
 
     python -m src.pipeline.preflight        # prints PASS / FAIL per input (never a value), exit 0 / 2
@@ -9,6 +9,7 @@ Each input is read from the environment first (GitHub Actions / Render secrets),
                             else eval/private/exclude_facilities_PRIVATE.txt
   private term list         PRIVATE_TERMS_PATH, else eval/private/forbidden_terms.txt
   Render API key            RENDER_API_KEY, else the same name in .env
+  court-case hand labels    FAMILIES_CLASSIFICATION_CSV, else eval/private/cl_classified.csv
 
 Without the exclusion list, past-deal homes would be published; without the term list the leak check cannot run.
 Values are never printed or logged: only names, counts and where the value came from.
@@ -24,6 +25,7 @@ from src.common.config import PROJECT_ROOT
 EXCLUDE_FILE = PROJECT_ROOT / "eval" / "private" / "exclude_facilities_PRIVATE.txt"
 TERMS_FILE = PROJECT_ROOT / "eval" / "private" / "forbidden_terms.txt"
 ENV_FILE = PROJECT_ROOT / ".env"
+LABELS_FILE = PROJECT_ROOT / "eval" / "private" / "cl_classified.csv"
 
 
 def _lines(text: str) -> list[str]:
@@ -70,12 +72,26 @@ def render_key(env=None) -> tuple[str | None, str]:
     return None, "missing"
 
 
+def case_labels(env=None) -> tuple[int, str]:
+    """Hand labels of court cases (senior housing: yes / maybe / no). A live run rebuilds the case families from
+    them; without the file the families, and with them the leads, would change."""
+    env = os.environ if env is None else env
+    p = Path(env["FAMILIES_CLASSIFICATION_CSV"]) if env.get("FAMILIES_CLASSIFICATION_CSV") else LABELS_FILE
+    if not p.is_file():
+        return 0, "missing"
+    n = max(0, sum(1 for x in p.read_text(encoding="utf-8").splitlines() if x.strip()) - 1)
+    return n, "FAMILIES_CLASSIFICATION_CSV" if env.get("FAMILIES_CLASSIFICATION_CSV") else "file"
+
+
 def check(env=None) -> list[dict]:
     """One row per input: {name, pass, detail}. The detail never holds a value."""
     ids, id_src = exclusion_ids(env)
     n_terms, t_src = term_count(env)
     key, k_src = render_key(env)
+    n_labels, l_src = case_labels(env)
     return [
+        {"name": "case_labels", "pass": n_labels > 0,
+         "detail": f"{n_labels} hand labels ({l_src})" if n_labels else "missing or empty: a live run would rebuild the court-case families differently"},
         {"name": "exclusion_list", "pass": bool(ids),
          "detail": f"{len(ids)} entries ({id_src})" if ids else "missing or empty: past-deal homes would be published"},
         {"name": "private_terms", "pass": n_terms > 0,
