@@ -203,7 +203,10 @@ def test_page_and_workflow_wiring():
     assert 'if (!c) return;' in js                                  # no change log in the snapshot: the site is unchanged
     css = (static / "app.css").read_text()
     assert ".asof.has-log { display: block;" in css and '$("asof").classList.add("has-log")' in js   # phone top bar
-    assert ".stage > span:last-child { min-width: 0; overflow-wrap: anywhere; }" in css                # long stage text wraps
+    assert ".stage > span:last-child { min-width: 0; overflow-wrap: break-word; }" in css             # wraps by words only
+    assert "overflow-wrap: anywhere" not in css.split("/* =====")[0].split(".stage {")[1].split("\n.pips")[0].replace("Never `anywhere`", "")
+    assert "table.grid td:has(> .stage) { min-width: 184px; }" in css                                  # Leads table stage column
+    assert "table.grid td > .stage { flex-direction: column;" in css                                   # bar above the text
     assert "white-space: nowrap" not in css.split(".stage {")[1].split("}")[0]
     wf = (Path(snapshot.__file__).parents[2] / ".github" / "workflows" / "daily3.yml").read_text()
     live = "\n".join(ln for ln in wf.splitlines() if not ln.strip().startswith("#"))
