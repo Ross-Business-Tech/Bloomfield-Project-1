@@ -37,6 +37,8 @@ CLIENT_TERM = "bloom" + "field"          # split so this file itself does not tr
 def private_terms() -> tuple[list[str], list[str]]:
     sys.path.insert(0, str(PROJECT_ROOT / "tools"))
     import leak_guard
+    from src.pipeline import preflight
+    leak_guard.TERMS_FILE = preflight.terms_path()        # PRIVATE_TERMS_PATH when set, else the laptop file
     return leak_guard.load_private_terms()
 
 
@@ -60,6 +62,15 @@ def mask_place_names(snap: dict) -> dict:
             for f in PLACE_FIELDS:
                 if isinstance(r.get(f), str):
                     r[f] = rx.sub("", r[f])
+    # change-log rows repeat a home's name and city (keys p / c): same rule, that row's own city only
+    for r in (out.get("changelog") or {}).get("rows") or []:
+        city = (r.get("c") or "").strip() if isinstance(r, dict) else ""
+        if len(city) < 3 or city.upper() == "NOT FOUND":
+            continue
+        rx = re.compile(re.escape(city), re.I)
+        for f in ("p", "c"):
+            if isinstance(r.get(f), str):
+                r[f] = rx.sub("", r[f])
     # List C example homes are written "NAME (CITY, ST)": only the city slot of that pattern is blanked
     for r in out.get("list_c") or []:
         if isinstance(r, dict) and isinstance(r.get("example_homes"), str):
@@ -79,19 +90,19 @@ def leak_check(text: str) -> list[str]:
         out.append(f"'licensed:' tag ({low.count('licensed:')}x)")
     if CLIENT_TERM in low:
         out.append(f"client name ({low.count(CLIENT_TERM)}x)")
-    if EXCLUDE_FILE.exists():
-        ids = [x.strip().lower() for x in EXCLUDE_FILE.read_text().splitlines() if x.strip() and not x.startswith("#")]
-        n = sum(1 for i in ids if i in low)
-        if n:
-            out.append(f"past-deal facility id ({n} of {len(ids)})")
+    from src.pipeline import preflight
+    ids = [x.lower() for x in preflight.exclusion_ids()[0]]
+    n = sum(1 for i in ids if i in low)
+    if n:
+        out.append(f"past-deal facility id ({n} of {len(ids)})")
     if not terms:
         out.append("private term list missing (eval/private/forbidden_terms.txt): cannot check")
     return out
 
 
 def api_key() -> str | None:
-    from dotenv import dotenv_values
-    return (dotenv_values(PROJECT_ROOT / ".env").get("RENDER_API_KEY") or "").strip() or None
+    from src.pipeline import preflight
+    return preflight.render_key()[0]                      # environment first (CI secret), else .env
 
 
 def client(key: str):
@@ -103,10 +114,11 @@ def unwrap(x: dict, k: str) -> dict:
     return x.get(k) or x
 
 
-def build() -> tuple[Path, dict]:
+def build(roundup_unverified: bool = False, changelog: str | None = None) -> tuple[Path, dict]:
     from src.web import snapshot
     b64 = OUTPUT_DIR / SECRET_FILE
-    snapshot.main(["--out", str(OUTPUT_DIR / "site_snapshot.json")])
+    snapshot.main(["--out", str(OUTPUT_DIR / "site_snapshot.json")] + (["--roundup-unverified"] if roundup_unverified else [])
+                  + (["--changelog", changelog] if changelog else []))
     return b64, json.loads(gzip.decompress(base64.b64decode(b64.read_bytes().strip())))
 
 
@@ -114,8 +126,18 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m src.web.publish", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--confirm", action="store_true", help="really upload and deploy (default: dry run)")
+    ap.add_argument("--roundup-unverified", action="store_true", help="nightly refresh rule (see src.web.snapshot)")
+    ap.add_argument("--changelog", default=None, help="daily check change log to include (see src.web.snapshot)")
     a = ap.parse_args(argv)
-    b64, snap = build()
+    if a.confirm:        # pre-flight: without the exclusion list, the term list or the key, nothing is built or sent
+        from src.pipeline import preflight
+        missing = preflight.problems()
+        if missing:
+            print("PRE-FLIGHT FAILED, nothing uploaded:")
+            for m in missing:
+                print("   -", m)
+            return 2
+    b64, snap = build(a.roundup_unverified, a.changelog)
     size = b64.stat().st_size
     c = snap.get("counts", {})
     print(f"upload: {b64} {size:,} bytes (limit {MAX_BYTES:,}); generated {snap.get('generated_at')}")

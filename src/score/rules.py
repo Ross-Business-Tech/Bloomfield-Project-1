@@ -474,6 +474,29 @@ def court_sale_status(stage_text: str | None) -> str | None:
     return {"sale order": "approved", "sale closed": "closed"}.get(stage_text or "")
 
 
+SALE_STATUS_RANK = {"approved": 1, "closed": 2}
+
+
+def sale_supersedes_override(sourced: dict | None, override: dict | None, override_date: str | None) -> bool:
+    """Manual overrides always win, except against a public source dated AFTER the override's own date that reports
+    a sale step FURTHER along (approved -> closed). A later report of the same step is not new information (e.g. a
+    roundup article dated by publication repeating a hand-checked closing) and never replaces the hand-checked date.
+    Undated sources never win; a month-only date counts as the 1st of that month. (Nightly refresh rule, Nov 12.)"""
+    if not (sourced and override and override_date and sourced.get("date")):
+        return False
+    if not str(sourced.get("source_url") or "").startswith(("http://", "https://")):
+        return False
+    d = str(sourced["date"])
+    day = stated_date(d if len(d) > 7 else d + "-01")
+    try:
+        ov_day = date.fromisoformat(str(override_date)[:10])
+    except ValueError:
+        return False
+    if not day or day <= ov_day:
+        return False
+    return SALE_STATUS_RANK.get(sourced.get("status"), 0) > SALE_STATUS_RANK.get(override.get("status"), 0)
+
+
 def news_reports_closing(text: str | None) -> bool:
     """A news item that reports a finished sale ("was sold Sept. 8", "facilitated the receivership sale of ...").
     Words about a sale still to come (bid, pending, to be sold) win: then the sale is not reported as closed."""

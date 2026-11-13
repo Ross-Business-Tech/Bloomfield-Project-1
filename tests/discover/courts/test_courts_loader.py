@@ -73,8 +73,9 @@ def test_search_only_commits_per_page(monkeypatch):
             self.db["cases"].add((r["court"], r["docket_no"]))
     FakeCursor.executemany = fake_cur_exec_many
 
-    def fake_run(limit, search_only, on_cases, queries=None):
+    def fake_run(limit, search_only, on_cases, queries=None, ledger=None):
         assert search_only
+        assert ledger is not None and ledger.job == "case_list"     # every downloader call is logged
         on_cases([CaseRecord("courtlistener", "u", "deb", "1")])
         before = len(commits)
         on_cases([CaseRecord("courtlistener", "u", "deb", "2")])

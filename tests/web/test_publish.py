@@ -39,3 +39,12 @@ def test_funnel_last_stage_equals_public_leads_in_the_packed_upload():
     assert snapshot.funnel_problems(unpacked) == [] and unpacked["funnel"][-1]["count"] == 6
     unpacked["funnel"][-1]["count"] = 400
     assert snapshot.funnel_problems(unpacked) == ["funnel 'Shown on Deal Radar' = 400, public leads = 6"]
+
+
+def test_change_log_rows_mask_only_their_own_city():
+    snap = {"changelog": {"rows": [{"p": "Oak Home of Springvale", "c": "Springvale", "change": "Buyer: NOT FOUND → Springvale OpCo"},
+                                   {"p": "Springvale Manor", "c": "Elm", "change": "x"}]}}
+    m = publish.mask_place_names(snap)["changelog"]["rows"]
+    assert "springvale" not in (m[0]["p"] + m[0]["c"]).lower()
+    assert m[0]["change"].endswith("Springvale OpCo")              # a buyer name is never masked
+    assert m[1]["p"] == "Springvale Manor"                         # another row's city is not masked

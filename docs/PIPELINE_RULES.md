@@ -53,3 +53,9 @@ Tests pass, sample run works, row counts reported, no file outside your ownershi
   own case name belongs to another debtor or property is replaced by the case's claims-agent page.
 - **Hand overrides** live in `config/manual_overrides.yaml`; each needs a public link and a date.
 - **Roundup rule**: audit only, see `docs/ROADMAP.md` item 11.
+- **Buyers inferred from a portfolio sale (Nov 12, 2026).** When the only public source for a home's buyer is a report
+  of a portfolio-wide sale that does not list the home (flag `portfolio_sale_inferred`, no separate buyer source), the
+  site shows the buyer as "Inferred · portfolio sale" (status `inferred_portfolio`) and the stage as
+  "Closed / sold (portfolio, inferred)". List A holds only buyers named property by property; inferred leads count
+  under "other". Named and inferred buyers are always shown as two counts, never one percentage. The score does not
+  change. This is a display rule in `src/web/snapshot.py`; nothing is rewritten in the database.

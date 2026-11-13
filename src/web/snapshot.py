@@ -7,7 +7,8 @@ pipeline connection, leaves out past-deal homes (eval/private/exclude_facilities
 allowlisted fields below, and writes one JSON file (plus CSVs next to it). The file is NOT committed (output/ is
 gitignored); it is uploaded to Render as a Secret File (docs/DEPLOY_RENDER.md).
 
-Lists: A = live deals with a named buyer; B = pre-sale distress, no buyer; C = buyers that appear as the named buyer
+Lists: A = live deals with a buyer named property by property (a buyer known only from a portfolio-wide sale report
+is "inferred_portfolio" and counts under other); B = pre-sale distress, no buyer; C = buyers that appear as the named buyer
 of 2+ homes in this public list (built from public-view fields only; the fuller repeat-buyer / takeover list uses
 internal tables and is not included).
 """
@@ -38,12 +39,41 @@ BREAKDOWN_KEYS = ["total", "stage", "buyer", "recency", "size_fit", "care_type_f
                   "buyer_parent", "buyer_parent_basis"]
 
 
+INFERRED_PORTFOLIO = "inferred_portfolio"
+
+
+def sale_of(r: dict) -> dict:
+    return r.get("sale_status") or (r.get("score_breakdown") or {}).get("sale_status") or {}
+
+
+def buyer_only_from_portfolio_sale(r: dict) -> bool:
+    """True when the only public source for this home's buyer is a portfolio-wide sale report that does not name the
+    home (flag portfolio_sale_inferred, and no separate buyer source)."""
+    if r.get("buyer_status") != "named" or r.get("buyer") in (None, NF):
+        return False
+    if "portfolio_sale_inferred" not in (r.get("flags") or []):
+        return False
+    sale, own = sale_of(r), public_link(r.get("buyer_source_url"))
+    return bool(sale.get("portfolio")) and (not own or own == sale.get("source_url"))
+
+
+def relabel_portfolio(r: dict) -> dict:
+    """Display rule (Nov 12): such a buyer is 'inferred_portfolio', not 'named'. The score is not touched; the lead
+    leaves List A (List A = buyer named property by property) and is counted under 'other'."""
+    return dict(r, buyer_status=INFERRED_PORTFOLIO) if buyer_only_from_portfolio_sale(r) else r
+
+
 def buyer_group(r: dict) -> str:
-    """Website filter group: confirmed (named in a source), candidate (stalking horse / proposed), inferred (parent
-    matched by brand, or a shell / stale buyer), none (NOT FOUND)."""
+    """Website filter group: confirmed (named in a source for this home), candidate (stalking horse / proposed),
+    inferred_portfolio (buyer of a portfolio-wide sale, home not named), inferred (parent matched by brand, or a
+    shell / stale buyer), none (NOT FOUND)."""
     st, bd = r.get("buyer_status"), r.get("breakdown") or {}
+    if st == INFERRED_PORTFOLIO:
+        return INFERRED_PORTFOLIO
     if "(unnamed)" in (r.get("buyer") or "").lower():          # a placeholder, never a named buyer
         return "candidate" if st in ("candidate", "named") else "inferred"
+    if st == "Unverified":                                      # buyer read from a multi-property roundup article
+        return "inferred"
     if st == "named" and bd.get("buyer_parent_basis") != "brand_match":
         return "confirmed"
     if st == "candidate":
@@ -114,9 +144,9 @@ def phone_text(digits) -> str | None:
 
 
 def excluded() -> set[str]:
-    if not EXCLUDE_FILE.exists():
-        return set()
-    return {ln.strip() for ln in EXCLUDE_FILE.read_text().splitlines() if ln.strip() and not ln.startswith("#")}
+    """Past-deal homes left off the site: EXCLUDE_FACILITIES / EXCLUDE_FACILITIES_PATH, else the laptop file."""
+    from src.pipeline import preflight
+    return set(preflight.exclusion_ids()[0])
 
 
 def public_link(url) -> str | None:
@@ -162,6 +192,10 @@ def other_reason(r: dict) -> str | None:
     if in_list_a(r) or (no_buyer and r.get("stage") not in ("sale", "done")):
         return None
     st = r.get("buyer_status")
+    if st == INFERRED_PORTFOLIO:
+        return INFERRED_PORTFOLIO          # buyer of a portfolio-wide sale; the source does not name this home
+    if st == "Unverified":
+        return "unverified_buyer"          # buyer read from a multi-property roundup article (--roundup-unverified)
     if st == "candidate":
         return "candidate"                 # stalking-horse / proposed bidder
     if st == "stale":
@@ -184,8 +218,12 @@ def summary(items_rows: list[dict], list_c_rows: list, linked_leads: int) -> dic
             b += 1
         else:
             reasons[other_reason(r) or "shell_or_closed"] += 1
+    groups = defaultdict(int)
+    for r in items_rows:
+        groups[r.get("buyer_group") or buyer_group(r)] += 1
     return {"leads": len(items_rows), "list_a": a, "list_b": b, "other": sum(reasons.values()),
-            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", "shell_or_closed")},
+            "other_breakdown": {k: reasons.get(k, 0) for k in ("candidate", "stale", "sale_no_public_buyer", "sale_done_no_public_buyer", INFERRED_PORTFOLIO, "unverified_buyer", "shell_or_closed")},
+            "buyers_named": groups["confirmed"], "buyers_inferred_portfolio": groups[INFERRED_PORTFOLIO],
             "list_c_buyers": len(list_c_rows), "list_c_linked_leads": linked_leads}
 
 
@@ -194,7 +232,7 @@ def build(rows: list[dict], skip: set[str], contacts: dict | None = None, geo: d
     contacts: {facility_id: app.v_facility_contact row}."""
     from src.score.diversity import display_sort, diversity_order, in_list_a, settings
     contacts = contacts or {}
-    shown = display_sort([r for r in rows if str(r.get("facility_id")) not in skip])   # deterministic ties
+    shown = display_sort([relabel_portfolio(r) for r in rows if str(r.get("facility_id")) not in skip])   # deterministic ties
     ordered, cap_main = diversity_order(shown)          # display order: max N leads per buyer in the top 20
     a_order, cap_a = diversity_order([r for r in shown if in_list_a(r)])
     rank_a = {id(r): i for i, r in enumerate(a_order, 1)}
@@ -382,13 +420,14 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
                  "foreclosure, loan default, court sale, closure ...)."},
         {"step": "Shown on Deal Radar", "count": len(snap.get("items") or []) if "items" in snap else c["leads"],
          "rule": "Main-list leads whose evidence is public, each with its source links."},
-        {"step": "List A", "count": c["list_a"], "rule": "Live deal with a buyer named in a source.", "list": "A"},
+        {"step": "List A", "count": c["list_a"], "rule": "Live deal with a buyer named for that property in a source.", "list": "A"},
         {"step": "List B", "count": c["list_b"], "rule": "Distress before any sale; no buyer found yet.", "list": "B"},
         {"step": "List C", "count": c["list_c"], "rule": "Firms with 2+ acquisitions in 36 months (CMS ownership changes, state licence changes, court sales, news), each with a public link.", "list": "C"},
     ]
 
 
-UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules",
+               "changelog")     # changelog: only present when a daily check passes --changelog (src.pipeline.changelog)
 UPLOAD_LIMIT = 950_000        # Render: all Secret Files of a service together must stay under 1 MB
 
 
@@ -416,6 +455,23 @@ def write(snap: dict, out: Path) -> None:
             w.writerows(snap[key])
 
 
+def roundup_unverified(conn, rows: list[dict]) -> int:
+    """Nov 12 rule (nightly refresh, opt-in with --roundup-unverified): a buyer whose public source is a multi-property
+    roundup article is shown as 'Unverified' (Unverified group, not List A). Returns how many rows changed."""
+    from src.extract.split import is_roundup
+    urls = sorted({r["buyer_source_url"] for r in rows if r.get("buyer_source_url")})
+    titles = {x["u"]: x["t"] for x in conn.execute("select source_url u, title t from raw.document where source_url = any(%s)",
+                                                   (urls,)).fetchall()} if urls else {}
+    n = 0
+    for r in rows:
+        u = r.get("buyer_source_url")
+        if u and r.get("buyer") not in (None, NF) and r.get("buyer_status") != "Unverified" and is_roundup(u, titles.get(u)):
+            r["buyer_status"] = "Unverified"
+            r["flags"] = list(r.get("flags") or []) + ["buyer_from_roundup"]
+            n += 1
+    return n
+
+
 def fetch_geo(conn) -> dict:
     """{facility_id: {lat, lon, coord_source}} from core.facility_geo; {} before its migration."""
     try:
@@ -441,6 +497,10 @@ def main(argv=None) -> int:
     from src.common.db import connect
     ap = argparse.ArgumentParser(prog="python -m src.web.snapshot")
     ap.add_argument("--out", type=Path, default=OUTPUT_DIR / "site_snapshot.json")
+    ap.add_argument("--roundup-unverified", action="store_true",
+                    help="show buyers read from roundup articles as Unverified (nightly refresh rule; off by default)")
+    ap.add_argument("--changelog", type=Path, default=None,
+                    help="JSON file with the daily check's change log (src.pipeline.changelog); off by default")
     a = ap.parse_args(argv)
     with connect() as conn:
         rows = [dict(r) for r in conn.execute("select * from app.v_lead_list order by score desc nulls last").fetchall()]
@@ -456,6 +516,8 @@ def main(argv=None) -> int:
             r["extra_links"] = more.get(str(r["facility_id"]))
             if {"sale_approved", "sale_closed"} & set(r.get("flags") or []):
                 r["sale_status"] = sale.get(str(r["facility_id"]))
+        if a.roundup_unverified:
+            print(f"roundup rule: {roundup_unverified(conn, rows)} buyers from roundup articles shown as Unverified")
     skip = excluded()
     snap = build(rows, skip, contacts, geo)
     with connect() as conn:
@@ -476,6 +538,8 @@ def main(argv=None) -> int:
         snap["funnel"] = funnel(conn, snap, len(explore))
         snap["sources_table"] = source_rows(conn)
         snap["rules"] = rules_block()
+    if a.changelog:
+        snap["changelog"] = json.loads(a.changelog.read_text())
     write(snap, a.out)
     print(f"snapshot: {snap['counts']} -> {a.out}; upload {a.out.with_suffix('.b64').name} "
           f"({a.out.with_suffix('.b64').stat().st_size:,} bytes) as the Render Secret File (gitignored, never commit)")

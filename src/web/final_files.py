@@ -15,7 +15,7 @@ from src.common.config import OUTPUT_DIR
 NF = "NOT FOUND"
 STAGE = {"early": "Early distress", "middle": "Deepening", "late": "Late stage", "sale": "In a sale"}
 BUYER = {"named": "Named", "candidate": "Candidate · not final", "stale": "Named · older ownership change",
-         "shell": "Shell entity", "named (undated)": "Named · undated"}
+         "shell": "Shell entity", "named (undated)": "Named · undated", "inferred_portfolio": "Inferred · portfolio sale"}
 COLS = ["rank", "property", "city", "state", "care_type", "units", "beds", "stage", "stage_date", "stage_source", "buyer",
         "buyer_status", "score", "lists", "signals", "flags", "address", "phone", "phone_source", "website",
         "website_source", "source_links", "first_seen", "last_updated", "lead_id"]
@@ -25,7 +25,7 @@ def stage_label(r: dict) -> str:
     s = r.get("sale_status")
     if not s:
         return STAGE.get(r.get("stage"), r.get("stage") or NF)
-    return ("Closed / sold" if s.get("status") == "closed" else "Sale approved") + (" (portfolio sale)" if s.get("portfolio") else "")
+    return ("Closed / sold" if s.get("status") == "closed" else "Sale approved") + (" (portfolio, inferred)" if s.get("portfolio") else "")
 
 
 def row(r: dict) -> dict:

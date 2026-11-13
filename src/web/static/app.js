@@ -22,16 +22,17 @@
   function stageText(r) {
     const s = r.sale_status;
     if (!s) return STAGE_LABEL[r.stage] || "";
-    return (s.status === "closed" ? "Closed / sold" : "Sale approved") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
-      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date)) + (s.portfolio ? " (portfolio sale)" : "");
+    return (s.status === "closed" ? "Closed / sold" : "Sale approved") + (s.portfolio ? " (portfolio, inferred)" : "") + " · " + (!s.date ? "date NOT FOUND" : /^\d{4}-\d{2}$/.test(s.date)
+      ? new Date(s.date + "-15T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : fmtDate(s.date));
   }
   const STAGE_TIP = { early: "Early distress: warning signs such as losses or low occupancy, with no legal action yet.",
     middle: "Deepening: several signals at once, or a regulator or lender has stepped in.",
     late: "Late stage: a court, receiver or lender now controls what happens to the property.",
     sale: "In a sale: the property is being sold, usually through a court process, or a sale was recently reported.",
-    done: "Sale approved: a court order approved the sale, closing not confirmed. Closed / sold: a public source reports the sale closed. The date is the order or closing date in that source." };
-  const BUYER_LABEL = { confirmed: "Named", candidate: "Candidate · not final", inferred: "Unverified", none: "NOT FOUND" };
-  const BUYER_TIP = { confirmed: "Named: a public source states this buyer.",
+    done: "Sale approved: a court order approved the sale, closing not confirmed. Closed / sold: a public source reports the sale closed. The date is the order or closing date in that source. (portfolio, inferred): the source reports the sale of a whole portfolio and does not name this property." };
+  const BUYER_LABEL = { confirmed: "Named", candidate: "Candidate · not final", inferred_portfolio: "Inferred · portfolio sale", inferred: "Unverified", none: "NOT FOUND" };
+  const BUYER_TIP = { confirmed: "Named: a public source states this buyer for this property.",
+    inferred_portfolio: "Inferred from a portfolio sale: a public source names this buyer for the whole portfolio, but does not list this property. Not counted as a named buyer and not on List A.",
     candidate: "Candidate: a proposed or stalking-horse bidder. Not final; another bidder may win.",
     inferred: "Unverified: an older or shell-company name that no recent source confirms.",
     none: "No public source names a buyer yet." };
@@ -74,7 +75,7 @@
     ["AL / IL / MC", "Assisted living (help with daily activities), independent living (apartments with services), memory care (secured care for dementia)."],
     ["CCRC", "Continuing-care retirement community: independent living, assisted living and nursing care on one campus."],
     ["Special Focus Facility", "Medicare's list of nursing homes with a history of serious quality problems."],
-    ["List A / List B / List C", "A: live deals with a buyer named in a source. B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
+    ["List A / List B / List C", "A: live deals with a buyer named for that property in a source (a buyer known only from a portfolio-wide sale is shown as inferred and is not on List A). B: distress before any sale, no buyer yet. C: buyers named on two or more properties."],
   ];
   const FLAG_TEXT = { sale_approved: "a court order approved the sale", sale_closed: "a public source reports the sale closed",
     closing_unverified: "closing not verified in a public source",
@@ -207,6 +208,7 @@
     else if (r.signals.length) parts.push(r.signals.length + " separate distress signals");
     if (r.buyer && r.buyer_group === "confirmed") parts.push("buyer named in a source");
     else if (r.buyer && r.buyer_group === "candidate") parts.push("candidate buyer (not final)");
+    else if (r.buyer && r.buyer_group === "inferred_portfolio") parts.push("buyer inferred from a portfolio sale");
     else if (!r.buyer) parts.push("no buyer named yet");
     if (bd.size_fit > 0) parts.push("fits a $3–30M loan");
     if (bd.care_type_fit > 0) parts.push("senior housing (care-type fit, an assumption)");
@@ -235,6 +237,7 @@
     S.byRank = S.data.items.slice().sort((a, b) => a.rank - b.rank);
     S.buyers = groupBuyers();
     $("asof").textContent = "As of " + fmtDate(S.data.generated_at);
+    buildChanges();
     $("loading").classList.add("hidden");
     buildFilters();
     buildTabs();
@@ -253,12 +256,13 @@
   }
 
   /* ---------- pages ---------- */
-  const VIEWS = { "#/leads": "leads", "#/buyers": "buyers", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore" };
-  const VIEW_IDS = ["dashboard", "leads", "buyers", "overview", "how", "explore"];
+  const VIEWS = { "#/leads": "leads", "#/buyers": "buyers", "#/overview": "overview", "#/funnel": "overview", "#/how": "how", "#/explore": "explore", "#/changes": "changes" };
+  const VIEW_IDS = ["dashboard", "leads", "buyers", "overview", "how", "explore", "changes"];
   function route() {
     const h = location.hash;
     const listRoute = /^#\/leads\/([ABC])$/.exec(h), buyerQ = /^#\/buyers\?q=(.*)$/.exec(h);
-    const v = listRoute ? "leads" : buyerQ ? "buyers" : VIEWS[h] || "dashboard";
+    let v = listRoute ? "leads" : buyerQ ? "buyers" : VIEWS[h] || "dashboard";
+    if (v === "changes" && !(S.data || {}).changelog) v = "dashboard";
     const changed = S.view !== v;
     if (changed) stopMotion();
     S.view = v;
@@ -328,11 +332,13 @@
     const items = S.data.items, n = SUM("leads", items.length);
     const senior = items.filter((r) => r.care_types.some((t) => SENIOR_TYPES.includes(t))).length;
     const states = new Set(items.map((r) => r.state).filter(Boolean)).size;
-    const named = items.filter((r) => r.buyer_group === "confirmed").length;
+    const named = SUM("buyers_named", items.filter((r) => r.buyer_group === "confirmed").length);
+    const inferred = SUM("buyers_inferred_portfolio", items.filter((r) => r.buyer_group === "inferred_portfolio").length);
     const phone = items.filter((r) => (r.contact || {}).phone).length;
     const pct = (x) => (n ? Math.round((100 * x) / n) : 0);
     const rows = [[n, "", "leads on the list", "public sources only"],
-      [pct(named), "%", "have a buyer named in a source", fmtInt(named) + " leads"],
+      [named, "", "have a buyer named for that property in a source", "List A is built from these"],
+      [inferred, "", "show a buyer inferred from one portfolio sale", "the source does not list the property; never added to the named count"],
       [pct(senior), "%", "are senior housing rather than nursing homes", fmtInt(senior) + " AL / IL / MC / CCRC leads"],
       [pct(phone), "%", "have a public phone number on file", "the rest read NOT FOUND"],
       [states, "", "states with at least one lead", ""]];
@@ -346,9 +352,11 @@
     const o = m.other_breakdown || {};
     const parts = [[o.candidate, "stalking-horse candidates"], [o.stale, "older ownership changes"],
       [o.sale_no_public_buyer, "sales under way with no public buyer"],
-      [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"], [o.shell_or_closed, "shell or closed"]]
+      [o.sale_done_no_public_buyer, "sales approved or closed with no public buyer"],
+      [o.inferred_portfolio, "buyer inferred from a portfolio sale"],
+      [o.unverified_buyer, "buyers from roundup articles, unverified"], [o.shell_or_closed, "shell or closed"]]
       .filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
-    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named) + List B " + fmtInt(m.list_b) +
+    return fmtInt(m.leads) + " leads = List A " + fmtInt(m.list_a) + " (buyer named for that property) + List B " + fmtInt(m.list_b) +
       " (no buyer yet) + " + fmtInt(m.other) + " other" + (parts.length ? " (" + parts.join(", ") + ")" : "") +
       ". List C = " + fmtInt(m.list_c_buyers) + " repeat buyers, linked to " + fmtInt(m.list_c_linked_leads) + " of these leads.";
   }
@@ -444,6 +452,87 @@
     $("x-table").classList.toggle("hidden", rows.length === 0);
     $("x-pager").replaceChildren(...pager(X.page, pages, rows.length, (p) => { X.page = p; renderExplore(); }));
   }
+  /* ---------- Change log: what each daily check changed (shown only when the snapshot carries one) ---------- */
+  const CL = { period: "run", mode: "changes", kind: "", page: 1 };
+  const CL_PERIODS = [["run", "Last check"], ["7", "7 days"], ["30", "30 days"]];
+  const CL_KINDS = { stage: "stage changes", buyer: "buyer changes", new_lead: "new leads" };
+  const CL_STATUS = { passed: "All checks passed", published: "Published", no_change: "No change", blocked: "Blocked by a check", dry_run: "Trial run (not published)", ready: "Ready", failed: "Failed", pending: "Running" };
+  const GATE_LABEL = { preflight: "Private inputs present", tests: "Tests", leak_scan: "Leak scan", source_links: "Source link on every lead", lead_count: "Lead count within limits", snapshot_size: "File size", consistency: "Counts agree" };
+  const CHECKED_LABEL = { dockets_read: "court dockets read", epiq_pages: "claims-agent pages", sale_steps_found: "sale steps found", new_dockets: "new dockets", new_articles: "new articles", courtlistener_calls: "CourtListener calls" };
+  function clRuns() {
+    const c = S.data.changelog;
+    if (CL.period === "run") return c.runs.filter((r) => r.no === c.check_no);
+    const since = new Date(c.updated_at).getTime() - Number(CL.period) * 864e5;
+    return c.runs.filter((r) => new Date(r.at).getTime() >= since);
+  }
+  function seg(id, options, current, pick) {
+    $(id).replaceChildren(...options.map(([k, label]) => el("button", { type: "button", "aria-pressed": String(k === current), text: label, onclick: () => pick(k) })));
+  }
+  function buildChanges() {
+    const c = S.data.changelog;
+    if (!c) return;
+    const label = "Updated " + c.updated_et + " · Daily check #" + c.check_no;
+    $("asof").replaceChildren(el("a", { href: "#/changes", text: label, title: "See what changed" }));
+    $("asof").classList.add("has-log");
+    $("cl-head").textContent = label;
+    renderChanges();
+  }
+  function renderChanges() {
+    const c = S.data.changelog, runs = clRuns(), nos = new Set(runs.map((r) => r.no));
+    const sum = (k) => runs.reduce((a, r) => a + (r[k] || 0), 0);
+    const all = c.rows.filter((r) => nos.has(r.no));
+    const rows = all.filter((r) => !CL.kind || (CL.kind === "new_lead" ? r.reason === "new_lead" : r.reason.startsWith(CL.kind + "_")));
+    const period = CL_PERIODS.find(([k]) => k === CL.period)[1].toLowerCase();
+    const delta = (c.leads_delta > 0 ? "+" : c.leads_delta < 0 ? "−" : "±") + fmtInt(Math.abs(c.leads_delta));
+    const tile = (kind, value, label, sub) => el("div", { class: "kpi" + (kind != null ? " click" : "") + (kind != null && CL.kind === kind && CL.mode === "changes" ? " on" : ""),
+      ...(kind != null ? { role: "button", tabindex: "0", onclick: () => { CL.kind = CL.kind === kind ? "" : kind; CL.mode = "changes"; CL.page = 1; renderChanges(); },
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } } : {}) },
+      el("dt", {}, typeof value === "string" ? el("span", { class: "value", text: value }) : value), el("dd", {}, label, sub ? el("span", { class: "sub", text: sub }) : null));
+    // buyers: named and inferred are two counts, never one number
+    const buyers = el("span", { class: "value two" }, el("span", { text: fmtInt(c.buyers_named) + " named" }), el("span", { text: fmtInt(c.buyers_inferred) + " inferred" }));
+    $("cl-tiles").replaceChildren(
+      tile("new_lead", fmtInt(c.leads), "Leads", delta + " vs " + c.baseline.label + " (" + fmtInt(c.baseline.leads) + ")"),
+      tile("buyer", buyers, "Buyers", fmtInt(sum("buyers_changed")) + " buyer changes, " + period),
+      tile("stage", fmtInt(sum("stages_changed")), "Stages changed", period),
+      tile(null, fmtInt(sum("removed")), "Removed", period + "; removed leads are not listed"));
+    seg("cl-period", CL_PERIODS, CL.period, (k) => { CL.period = k; CL.page = 1; renderChanges(); });
+    seg("cl-mode", [["changes", "Changes"], ["checks", "Checks run"]], CL.mode, (k) => { CL.mode = k; CL.page = 1; renderChanges(); });
+    const checks = CL.mode === "checks", list = checks ? runs : rows;
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    CL.page = Math.min(CL.page, pages);
+    const shown = list.slice((CL.page - 1) * PAGE_SIZE, CL.page * PAGE_SIZE);
+    $("cl-count").textContent = checks ? plural(runs.length, "check") + ", " + period
+      : plural(rows.length, "change") + ", " + period + (CL.kind ? " · " + CL_KINDS[CL.kind] + " only" : "");
+    const head = checks ? ["Check", "Run time", "Result", "Checks passed", "What was read", "Changes"] : ["Property", "Change", "Reason", "Source", "Date"];
+    $("cl-thead").replaceChildren(el("tr", {}, head.map((h) => el("th", { scope: "col", text: h }))));
+    $("cl-tbody").replaceChildren(...shown.map(checks ? checkRow : changeRow));
+    $("cl-table").classList.toggle("hidden", list.length === 0);
+    $("cl-empty").classList.toggle("hidden", list.length !== 0);
+    $("cl-pager").replaceChildren(...pager(CL.page, pages, list.length, (p) => { CL.page = p; renderChanges(); }));
+  }
+  function changeRow(r) {
+    const lead = S.data.items.find((x) => x.lead_id === r.id), tip = (S.data.changelog.reasons || {})[r.reason];
+    return el("tr", { class: lead ? "" : "static", ...(lead ? { tabindex: "0", onclick: (e) => openPanel(lead, e.currentTarget, S.byRank),
+      onkeydown: (e) => { if (e.key === "Enter") openPanel(lead, e.currentTarget, S.byRank); } } : {}) },
+      el("td", { class: "prop" }, r.p || "NOT FOUND", el("span", { class: "muted place", text: [cityName(r.c), r.s].filter(Boolean).join(", ") })),
+      el("td", { text: r.change }),
+      el("td", {}, el("span", { class: "chip plain code", text: r.reason, ...(tip ? { "data-tip": tip } : {}) })),
+      el("td", {}, r.src ? ext(r.src, hostOf(r.src)) : el("span", { class: "nf", text: "NOT FOUND" })),
+      el("td", { class: "nowrap", text: fmtDate(r.d) }));
+  }
+  function checkRow(r) {
+    const gates = r.gates || [], ok = gates.filter((g) => g.pass).length;
+    const read = Object.entries(r.checked || {}).filter(([k, v]) => CHECKED_LABEL[k] && v != null).map(([k, v]) => fmtInt(v) + " " + CHECKED_LABEL[k]);
+    const moved = [[r.new, "new"], [r.stages_changed, "stage"], [r.buyers_changed, "buyer"], [r.removed, "removed"]].filter(([n]) => n > 0).map(([n, t]) => fmtInt(n) + " " + t);
+    return el("tr", { class: "static" },
+      el("td", { class: "strong nowrap", text: "#" + r.no }), el("td", { class: "nowrap", text: r.et }),
+      el("td", { text: CL_STATUS[r.status] || r.status }),
+      el("td", {}, el("details", { class: "more" }, el("summary", { text: ok + " of " + gates.length }),
+        el("ul", { class: "gates" }, gates.map((g) => el("li", { class: g.pass ? "ok" : "bad", text: (g.pass ? "Pass · " : "Fail · ") + (GATE_LABEL[g.name] || g.name) + ": " + g.detail }))))),
+      el("td", { class: "reason", text: read.join(", ") || "NOT FOUND" }),
+      el("td", { text: moved.join(", ") || "none" }));
+  }
+
   function pager(page, pages, count, go) {
     if (pages <= 1) return [];
     return [el("span", { class: "muted", text: "Page " + page + " of " + pages }),
@@ -462,7 +551,7 @@
     $("f-care").replaceChildren(option("", "All care types"), option("senior", "Senior housing (AL / IL / MC / CCRC)"),
       option("SNF", "Skilled nursing (SNF)"), ...SENIOR_TYPES.map((c) => option(c, c + " only")));
     $("f-stage").replaceChildren(option("", "All stages"), ...STAGES.map((s) => option(s, STAGE_LABEL[s])));
-    $("f-buyer").replaceChildren(option("", "Any buyer status"), option("confirmed", "Buyer named"), option("candidate", "Candidate (not final)"),
+    $("f-buyer").replaceChildren(option("", "Any buyer status"), option("confirmed", "Buyer named"), option("candidate", "Candidate (not final)"), option("inferred_portfolio", "Inferred · portfolio sale"),
       option("inferred", "Unverified"), option("none", "No buyer found"));
     for (const id of FILTER_IDS) $(id).addEventListener("input", () => { S.page = 1; S.sel = -1; render(); });
     $("f-state").addEventListener("input", (e) => setState(e.target.value));
@@ -639,7 +728,7 @@
   }
 
   /* ---------- Buyers: who is taking these properties over ---------- */
-  const B_SECTIONS = [["confirmed", "Named"], ["candidate", "Candidate · not final"], ["inferred", "Unverified"]];
+  const B_SECTIONS = [["confirmed", "Named"], ["candidate", "Candidate · not final"], ["inferred_portfolio", "Inferred · portfolio sale"], ["inferred", "Unverified"]];
   function groupBuyers() {
     const m = new Map();
     for (const r of S.data.items) {
@@ -652,7 +741,7 @@
     for (const g of out) {
       g.repeat = S.repeat.get(g.name.trim().toLowerCase()) || null;
       g.leads.sort((a, b) => a.rank - b.rank);
-      g.group = ["confirmed", "candidate", "inferred"].find((k) => g.groups[k]) || "inferred";
+      g.group = ["confirmed", "candidate", "inferred_portfolio", "inferred"].find((k) => g.groups[k]) || "inferred";
       g.states = [...new Set(g.leads.map((r) => r.state).filter(Boolean))].sort();
       g.care = [...new Set(g.leads.flatMap((r) => r.care_types))];
       const bd = (g.leads.find((r) => (r.breakdown || {}).buyer_type) || {}).breakdown || {};
@@ -803,11 +892,15 @@
 
     // three numbers, never more
     const named = rows.filter((r) => r.buyer_group === "confirmed").length;
+    const inferred = rows.filter((r) => r.buyer_group === "inferred_portfolio").length;
     const mid = level === 0 ? [new Set(rows.map((r) => r.state).filter(Boolean)).size, "states"]
       : level === 1 ? [new Set(rows.map(cityKey)).size, "cities"] : [rows.filter((r) => phoneText((r.contact || {}).phone)).length, "with phone"];
     const nLeads = level === 0 && !M.layers.size ? SUM("leads", rows.length) : rows.length;
-    $("hud").replaceChildren(...[[nLeads, nLeads === 1 ? "lead" : "leads"], mid, [named, "buyer named"]].map(([n, label]) =>
-      el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))));
+    // buyers: named and inferred are always two separate counts, never one combined number or %
+    $("hud").replaceChildren(...[[nLeads, nLeads === 1 ? "lead" : "leads"], mid].map(([n, label]) =>
+      el("div", {}, el("dt", { text: label }), el("dd", { "data-n": n, text: fmtInt(n) }))),
+      el("div", { class: "hud-buyers" }, el("dt", { text: "Buyers" }), el("dd", { "aria-label": fmtInt(named) + " named, " + fmtInt(inferred) + " inferred" },
+          el("span", { text: fmtInt(named) + " named" }), el("span", { text: fmtInt(inferred) + " inferred" }))));
 
     // layer toggles
     const base = M.st ? S.byRank.filter((r) => (M.st === NOSTATE ? !r.state : r.state === M.st) && (!M.city || cityKey(r) === M.city)) : S.byRank;
@@ -1055,6 +1148,7 @@
       el("p", { class: "buyer-big" }, r.buyer ? el("strong", { text: r.buyer }) : null, buyerNotes(r) ? el("span", { class: "bnote", text: buyerNotes(r) }) : null, " ", buyerChip(r.buyer_group),
         r.flags.includes("buyer_possible_insider") ? el("span", { class: "chip plain", text: "Possible insider", "data-tip": "This buyer shares a brand with the seller, so the sale may be to a related party (inferred)." }) : null),
       r.buyer_group === "candidate" ? el("p", { class: "caveat", text: "Proposed or stalking-horse bidder. Not final: another bidder may win." }) : null,
+      r.buyer_group === "inferred_portfolio" ? el("p", { class: "caveat", text: "Inferred: a public source names this buyer for a whole portfolio sale but does not list this property. Not a named buyer; not on List A." }) : null,
       r.buyer_group === "inferred" ? el("p", { class: "caveat", text: "This name is older or belongs to a shell company, and no recent source confirms it." }) : null,
       !r.buyer ? el("p", { class: "muted", text: "No public source names a buyer yet. That is the opening: financing is usually arranged once a buyer steps in." }) : null,
       r.buyer ? el("dl", { class: "facts" },
@@ -1206,7 +1300,7 @@
     const lines = S.rows.map((r) => { const c = r.contact || {};
       return [r.lists.join("/"), listRank(r), r.property, r.city || "NOT FOUND", r.state || "NOT FOUND", addressText(c) || "NOT FOUND",
         phoneText(c.phone) || "NOT FOUND", c.website || "NOT FOUND", r.care_types.join("/") || "NOT FOUND", size(r) ?? "NOT FOUND",
-        r.signals.join(";"), r.sale_status ? stageText(r) : r.stage, r.buyer || "NOT FOUND", r.buyer_group, r.score, whyShort(r), r.sources.join(" | "), r.not_found.join(";")]; });
+        r.signals.join(";"), r.sale_status ? stageText(r) : r.stage, r.buyer || "NOT FOUND", r.buyer_group === "inferred_portfolio" ? BUYER_LABEL.inferred_portfolio : r.buyer_group, r.score, whyShort(r), r.sources.join(" | "), r.not_found.join(";")]; });
     saveCsv(header, lines, "deal-radar-" + (S.tab === "all" ? "leads" : "list-" + S.tab.toLowerCase()) + (S.state ? "-" + S.state : "") + ".csv");
   });
 

@@ -23,10 +23,61 @@ TOKEN_MISSING = "COURTLISTENER_TOKEN not set, skipping"
 
 
 MAX_REQUESTS = 1500          # whole-run cap: CourtListener is a free nonprofit service
+MIN_INTERVAL = 5.0           # seconds between CourtListener calls (Nov 13, 2026: at 1/s the per-minute limit refused
+                             # 10 of 32 calls in the dry run). The rolling hour / 24 h caps live in CallLedger.
 
 
 class RequestCapReached(Exception):
     pass
+
+
+class CallLedger:
+    """Every CourtListener HTTP attempt made through a client (retries included), recorded by httpx event hooks, plus
+    optional rolling-window caps that count earlier calls too (`history`: datetimes from other runs / jobs).
+
+    A cap is checked BEFORE each request; reaching it raises RequestCapReached (the request is not sent).
+    Nothing here is persisted: callers save `calls` (daily3 run log, raw.courtlistener_calls when it exists).
+    """
+
+    def __init__(self, job: str, run_id: str | None = None, history=(), hour_cap: int | None = None,
+                 day_cap: int | None = None, now=None):
+        from datetime import datetime, timezone
+        self.job, self.run_id = job, run_id
+        self.history = sorted(history)
+        self.hour_cap, self.day_cap = hour_cap, day_cap
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        self.calls: list[dict] = []
+
+    def used(self, hours: float) -> int:
+        """Calls in the rolling window ending now: earlier ones (history) and this run's."""
+        from datetime import timedelta
+        since = self._now() - timedelta(hours=hours)
+        return sum(1 for t in self.history if t > since) + sum(1 for c in self.calls if c["at"] > since)
+
+    def remaining(self) -> int:
+        caps = [cap - self.used(h) for cap, h in ((self.hour_cap, 1), (self.day_cap, 24)) if cap is not None]
+        return max(0, min(caps)) if caps else 10 ** 9
+
+    def check(self) -> None:
+        if self.hour_cap is not None and self.used(1) >= self.hour_cap:
+            raise RequestCapReached(f"rolling-hour cap {self.hour_cap} reached ({self.used(1)} calls in the last hour)")
+        if self.day_cap is not None and self.used(24) >= self.day_cap:
+            raise RequestCapReached(f"rolling-24h cap {self.day_cap} reached ({self.used(24)} calls in 24 h)")
+
+    def on_request(self, request) -> None:
+        self.check()
+        self.calls.append({"at": self._now(), "job": self.job, "run_id": self.run_id, "method": request.method,
+                           "endpoint": request.url.path, "query": request.url.query.decode()[:300], "status": None})
+
+    def on_response(self, response) -> None:
+        for c in reversed(self.calls):
+            if c["status"] is None and c["endpoint"] == response.request.url.path:
+                c["status"] = response.status_code
+                break
+
+    def rows(self) -> list[dict]:
+        """JSON-ready copy (no headers, so never the token)."""
+        return [dict(c, at=c["at"].isoformat()) for c in self.calls]
 
 
 class CourtListenerClient(PoliteClient):
@@ -52,11 +103,48 @@ class CourtListenerClient(PoliteClient):
         return super()._fetch(url)
 
 
-def make_client(*, transport=None, **kw) -> CourtListenerClient:
-    """Raises MissingSetting when the token is absent."""
+def make_client(*, transport=None, ledger: CallLedger | None = None, **kw) -> CourtListenerClient:
+    """Raises MissingSetting when the token is absent. With a ledger, every HTTP attempt is recorded (and capped)."""
     token = env("COURTLISTENER_TOKEN")
-    return CourtListenerClient("courtlistener", transport=transport,
-                               headers={"Authorization": f"Token {token}", "Accept": "application/json"}, **kw)
+    kw.setdefault("min_interval", MIN_INTERVAL)          # every job: daily3, case-list downloader, sale-check
+    c = CourtListenerClient("courtlistener", transport=transport,
+                            headers={"Authorization": f"Token {token}", "Accept": "application/json"}, **kw)
+    if ledger is not None:
+        c.ledger = ledger
+        c._client.event_hooks = {"request": [ledger.on_request], "response": [ledger.on_response]}
+    return c
+
+
+CALLS_TABLE = "raw.courtlistener_calls"
+
+
+def save_calls(conn, ledger: CallLedger) -> int | None:
+    """Best effort: write the ledger to raw.courtlistener_calls when that table exists (None = table missing)."""
+    if not ledger.calls or not conn.execute("select to_regclass(%s) is not null ok", (CALLS_TABLE,)).fetchone()["ok"]:
+        return None if ledger.calls else 0
+    with conn.cursor() as cur:
+        cur.executemany(f"insert into {CALLS_TABLE} (called_at, job, run_id, method, endpoint, query, status) "
+                        "values (%(at)s, %(job)s, %(run_id)s, %(method)s, %(endpoint)s, %(query)s, %(status)s)",
+                        ledger.calls)
+    conn.commit()
+    return len(ledger.calls)
+
+
+def call_history(conn, hours: int = 24) -> tuple[list, dict]:
+    """Datetimes of CourtListener calls in the last `hours`, from every record that exists: raw.courtlistener_calls
+    (daily3, case-list downloader) and core.sale_check.requests_used (the sale-check job, one stamp per request)."""
+    out, src = [], {}
+    if conn.execute("select to_regclass(%s) is not null ok", (CALLS_TABLE,)).fetchone()["ok"]:
+        rows = conn.execute(f"select called_at from {CALLS_TABLE} where called_at > now() - make_interval(hours => %s)",
+                            (hours,)).fetchall()
+        out += [r["called_at"] for r in rows]
+        src[CALLS_TABLE] = len(rows)
+    rows = conn.execute("select checked_at, requests_used from core.sale_check where channel = 'courtlistener' "
+                        "and checked_at > now() - make_interval(hours => %s)", (hours,)).fetchall()
+    n = sum(int(r["requests_used"] or 0) for r in rows)
+    out += [r["checked_at"] for r in rows for _ in range(int(r["requests_used"] or 0))]
+    src["core.sale_check"] = n
+    return out, src
 
 
 def is_bankruptcy(hit: dict) -> bool:
@@ -190,11 +278,15 @@ def _fetch(client, res, limit, today, seen, search_only, on_cases, queries=None)
             url, params, pages = data.get("next"), None, pages + 1
 
 
-def run(limit=None, *, transport=None, today=None, search_only=False, on_cases=None, queries=None) -> SourceResult:
+def run(limit=None, *, transport=None, today=None, search_only=False, on_cases=None, queries=None,
+        ledger: CallLedger | None = None) -> SourceResult:
     try:
-        client = make_client(transport=transport)
+        client = make_client(transport=transport, ledger=ledger)
     except MissingSetting:
         return SourceResult("courtlistener", note=TOKEN_MISSING)
     with client:
-        return fetch_courtlistener(client, limit, today=today, search_only=search_only, on_cases=on_cases,
-                                   queries=queries)
+        res = fetch_courtlistener(client, limit, today=today, search_only=search_only, on_cases=on_cases,
+                                  queries=queries)
+    if ledger is not None:
+        res.note = (res.note + "; " if res.note else "") + f"logged_calls={len(ledger.calls)}"
+    return res

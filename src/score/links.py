@@ -76,4 +76,6 @@ def stage_text(stage: str | None, sale: dict | None) -> str | None:
     if not sale:
         return stage
     word = "closed / sold" if sale.get("status") == "closed" else "sale approved"
-    return f"{word} ({sale.get('date') or 'date NOT FOUND'}{', portfolio sale' if sale.get('portfolio') else ''})"
+    if sale.get("portfolio"):          # the source covers a whole portfolio and does not name this home
+        return f"{word} (portfolio, inferred; {sale.get('date') or 'date NOT FOUND'})"
+    return f"{word} ({sale.get('date') or 'date NOT FOUND'})"
