@@ -123,10 +123,17 @@ def main(argv=None) -> int:
     d = OUTPUT_DIR / "cloud_inputs"
     d.mkdir(parents=True, exist_ok=True)
     rc = 0
+    existing = set()
+    if a.set:                                           # a plain key that is already a secret is left alone
+        r = subprocess.run(["gh", "secret", "list", "--json", "name", "-q", ".[].name"], capture_output=True, text=True, cwd=PROJECT_ROOT)
+        existing = set(r.stdout.split())
     for name, value in secrets.items():
         if name not in PLAIN:
             (d / name).write_text(value)
         line = f"   {name:28} {len(value):>7,} characters"
+        if a.set and name in PLAIN and name in existing:
+            print(line + "  kept (already set)")
+            continue
         if a.set:
             r = subprocess.run(["gh", "secret", "set", name], input=value, text=True, capture_output=True, cwd=PROJECT_ROOT)
             line += "  set" if r.returncode == 0 else "  FAILED"
