@@ -6,8 +6,9 @@
 
 Notes: Password-protected. Ask the handoff owner for access; the password is never stored in this repo.
 
-**Powered by:** Ross Business+Tech AI Sprint · the Weiser Center for Real Estate · Bloomfield Capital
-**Team members:** Aiden Lee · Qifeng Yuan · Rui Li · Di Wu
+**Powered by:** Ross Business+Tech AI Sprint, the Weiser Center for Real Estate, Bloomfield Capital
+
+**Team members:** Aiden Lee, Qifeng Yuan, Rui Li, Di Wu
 
 **Last updated:** Nov 15, 2026
 
