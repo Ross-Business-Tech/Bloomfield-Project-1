@@ -414,5 +414,5 @@ Deal Radar was built in the Fall 2026 AI Sprint at Ross Business+Tech. We are gr
 - **Brandon Brooks**. Walked us through Bloomfield's deals and lending criteria and joined our project check-ins.
 **Ross School of Business**
 
-  -**Kai Petainen**, Tozzi Finance Center Manager. Offer assistance on Bloomberg data. 
+- **Kai Petainen**, Tozzi Finance Center Manager. Offer assistance on Bloomberg data. 
 
