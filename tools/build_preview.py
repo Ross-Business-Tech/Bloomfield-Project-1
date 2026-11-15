@@ -39,7 +39,7 @@ def demo_rows(n: int = 64) -> list[dict]:
         stage = rnd.choice(["early", "middle", "late", "sale"])
         has_buyer = i % 3 == 0
         rows.append({
-            "facility_id": f"demo-{i}", "property": f"{rnd.choice(NAMES)} {rnd.choice(KINDS)} (demo {i + 1})",
+            "facility_id": f"demo-{i}", "lead_id": f"demo-{i}", "property": f"{rnd.choice(NAMES)} {rnd.choice(KINDS)} (demo {i + 1})",
             "city": rnd.choice(CITIES) if i % 17 else None, "state": rnd.choice(STATES) if i % 19 else None,
             "care_types": rnd.choice([["SNF"], ["AL"], ["AL", "MC"], ["IL"], ["CCRC"], []]),
             "units": rnd.choice([None, 60, 84, 110, 140]), "beds": rnd.choice([None, 90, 120, 160]),
@@ -70,6 +70,35 @@ def demo_contacts(rows: list[dict]) -> dict:
             "website": f"https://www.example.org/{slug}" if i % 3 else None,
             "website_source_url": "https://example.org/demo-listing" if i % 3 else None, "contact_checked": "2026-11-10"}
     return out
+
+
+def demo_daily(items: list[dict]) -> dict:
+    """Made-up Daily check: a few leads confirmed, escalated or weakened today, a few with older changes this week."""
+    today, rnd = "2026-11-12", random.Random(23)
+    texts = {
+        "confirmed": [("Court docket shows a new filing in the case", "A routine filing in the open bankruptcy case, which keeps the lead alive."),
+                      ("Trade news repeats the sale plan", "A second outlet reports the same sale process.")],
+        "escalated": [("A buyer is now named in a news story", "The story names the buyer and expected closing."),
+                      ("Receiver appointed by the court", "Moves the lead from deepening to late stage.")],
+        "weakened": [("Sale reported as closed", "The deal closed, so this is old news unless financing is still open."),
+                     ("Case dismissed", "The court dismissed the filing."),
+                     ("Operator says the building will stay open", "A company statement reverses the closure notice.")],
+    }
+    changes = []
+    for i, r in enumerate(items):
+        kind = "weakened" if i % 11 == 3 else "escalated" if i % 7 == 2 else "confirmed" if i % 5 == 1 else None
+        base = r.get("score") or 50
+        if kind:
+            title, detail = rnd.choice(texts[kind])
+            delta = {"confirmed": 0, "escalated": rnd.randint(6, 14), "weakened": -rnd.randint(8, 20)}[kind]
+            changes.append({"lead_id": r["lead_id"], "date": today, "kind": kind, "title": title, "detail": detail,
+                            "source_url": f"https://news.example.org/demo-daily-{i}", "source_label": "news.example.org",
+                            "score_before": base - delta, "score_after": base})
+        if i % 6 == 0:
+            changes.append({"lead_id": r["lead_id"], "date": "2026-11-09", "kind": "confirmed", "title": "Public record updated",
+                            "detail": "A listing in a public source was refreshed.", "source_url": f"https://example.org/demo-daily-old-{i}",
+                            "source_label": "example.org", "score_before": base, "score_after": base})
+    return {"date": today, "checked_at": "2026-11-12T11:30:00-05:00", "changes": changes}
 
 
 def main() -> int:
@@ -103,6 +132,7 @@ def main() -> int:
         {"source": "CourtListener", "provides": "Federal bankruptcy dockets", "records": 310, "unit": "cases", "refresh": "by hand (daily limit)"},
     ]
     snap["rules"] = snapshot.rules_block() if _has_rules() else {}
+    snap["daily"] = demo_daily(snap["items"])
     snap["demo"] = True
 
     if OUT.resolve() != ROOT.resolve() / "preview-dist":
@@ -114,7 +144,7 @@ def main() -> int:
     shutil.copytree(STATIC / "vendor", OUT / "static" / "vendor")
     for name in ("app.js", "app.css", "states-albers-10m.json"):
         shutil.copy(STATIC / name, OUT / "static" / name)
-    keys = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules")
+    keys = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules", "daily")
     (OUT / "api" / "snapshot.json").write_text(json.dumps({k: snap.get(k) for k in keys}, ensure_ascii=False, default=str), encoding="utf-8")
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     banner = ('<div style="background:#c9a66b;color:#0b1f3a;text-align:center;font:600 13px Inter,system-ui,sans-serif;padding:7px 12px">'

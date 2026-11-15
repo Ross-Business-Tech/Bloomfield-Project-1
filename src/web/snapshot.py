@@ -427,6 +427,7 @@ def funnel(conn, snap: dict, explore_n: int) -> list[dict]:
 
 
 UPLOAD_KEYS = ("generated_at", "counts", "summary", "items", "list_c", "explore", "funnel", "sources_table", "rules",
+               "daily",
                "changelog")     # changelog: only present when a daily check passes --changelog (src.pipeline.changelog)
 UPLOAD_LIMIT = 950_000        # Render: all Secret Files of a service together must stay under 1 MB
 

@@ -20,3 +20,18 @@ Added after PR #17:
 | Field (per lead) | Why | Today the UI does |
 |---|---|---|
 | `breakdown.buyer_facilities_basis` in the public snapshot | To say whether a mega-platform buyer's size is from CMS, a source, or inferred. The pipeline computes it, but the current snapshot does not carry it. | Flagged buyers read "(mega-platform)"; ", size inferred" is added only when the snapshot says the basis is inferred. |
+
+## Daily check (`snapshot.daily`)
+
+The Leads page and each lead's panel show a "Daily check" when the snapshot has this block (nothing shows without it). The preview fills it with made-up data (`tools/build_preview.py`); the real daily job that writes it is not built yet.
+
+```json
+"daily": {
+  "date": "2026-11-12", "checked_at": "2026-11-12T11:30:00-05:00",
+  "changes": [{"lead_id": "...", "date": "2026-11-12", "kind": "confirmed | escalated | weakened",
+               "title": "Sale reported as closed", "detail": "one plain sentence", "source_url": "https://...",
+               "source_label": "site name", "score_before": 92, "score_after": 78}]
+}
+```
+
+Keep about 7 days of changes. A lead with no change dated `date` reads "No change today". Same rules as the score: the AI only reads articles; the fixed rules decide the status and score.
