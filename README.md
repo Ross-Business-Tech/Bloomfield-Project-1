@@ -401,6 +401,7 @@ Deal Radar was built in the Fall 2026 AI Sprint at Ross Business+Tech. We are gr
 **Weiser Center for Real Estate, Ross School of Business**
  
 - **Amy M. Merrick**, Managing Director. Opened doors for us, followed our progress and helped connect us with Bloomberg access at Tozzi.
+
 **Business+Tech AI Sprint team**
  
 - **Emilee Studley**, Assistant Director, Programs and Partnerships. Ran the Sprint, answered our questions and connected us with the people we needed.
@@ -408,10 +409,12 @@ Deal Radar was built in the Fall 2026 AI Sprint at Ross Business+Tech. We are gr
 - **Arihan Iyer**, AI Solutions Specialist. Co-working sessions on scoping our build and prompt engineering, plus office hours.
 - **Neelufar Jaberi**, AI Solutions Specialist. Co-working sessions on scoping our build and prompt engineering.
 - **Charles Dewey**, AI Sprint team. Welcomed us into the Sprint and handled onboarding.
+
 **Bloomfield Capital**
  
 - **Shana Weiss**. Walked us through how Bloomfield thinks about deals, answered our scoping questions and arranged our access to Bloomberg.
 - **Brandon Brooks**. Walked us through Bloomfield's deals and lending criteria and joined our project check-ins.
+
 **Ross School of Business**
 
 - **Kai Petainen**, Tozzi Finance Center Manager. Offer assistance on Bloomberg data. 
