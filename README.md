@@ -389,6 +389,3 @@ From [`docs/ROADMAP.md`](docs/ROADMAP.md), roughly in order of value:
 | IL / AL / MC / SNF | Independent living / assisted living / memory care / skilled nursing |
 | CCRC | A campus with all levels of senior care |
 
----
-
-*The next deal is already in the public record. Deal Radar lets Bloomfield call first.*
