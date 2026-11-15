@@ -30,6 +30,7 @@ Notes: Password-protected. Ask the handoff owner for access; the password is nev
 12. [What's next](#12-whats-next)
 13. [Rules that never change](#13-rules-that-never-change)
 14. [Glossary](#14-glossary)
+15. [Acknowledgements](#15-acknowledgements)
 
 ---
 
@@ -390,4 +391,28 @@ From [`docs/ROADMAP.md`](docs/ROADMAP.md), roughly in order of value:
 | CCN | CMS certification number, a unique ID for a nursing home |
 | IL / AL / MC / SNF | Independent living / assisted living / memory care / skilled nursing |
 | CCRC | A campus with all levels of senior care |
+
+---
+
+## 15. Acknowledgements
+ 
+Deal Radar was built in the Fall 2026 AI Sprint at Ross Business+Tech. We are grateful to everyone who gave us their time, data access and guidance.
+ 
+**Weiser Center for Real Estate, Ross School of Business**
+ 
+- **Amy M. Merrick**, Managing Director. Opened doors for us, followed our progress and helped connect us with Bloomberg access at Tozzi.
+**Business+Tech AI Sprint team**
+ 
+- **Emilee Studley**, Assistant Director, Programs and Partnerships. Ran the Sprint, answered our questions and connected us with the people we needed.
+- **Ruby McKillips**, AI Sprint team. Organized the sessions and got our team its API access.
+- **Arihan Iyer**, AI Solutions Specialist. Co-working sessions on scoping our build and prompt engineering, plus office hours.
+- **Neelufar Jaberi**, AI Solutions Specialist. Co-working sessions on scoping our build and prompt engineering.
+- **Charles Dewey**, AI Sprint team. Welcomed us into the Sprint and handled onboarding.
+**Bloomfield Capital**
+ 
+- **Shana Weiss**. Walked us through how Bloomfield thinks about deals, answered our scoping questions and arranged our access to Bloomberg.
+- **Brandon Brooks**. Walked us through Bloomfield's deals and lending criteria and joined our project check-ins.
+**Ross School of Business**
+
+  -**Kai Petainen**, Tozzi Finance Center Manager. Offer assistance on Bloomberg data. 
 
