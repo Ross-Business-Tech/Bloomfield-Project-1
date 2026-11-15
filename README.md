@@ -1,6 +1,6 @@
 # Deal Radar
 
-**Our goal: Found distressed senior housing before brokers.**
+**Our goal: Found distressed senior housing before brokers through the signals we find from public data.**
 
 🔗 **Live site: [bloomfield-project-1.onrender.com](https://bloomfield-project-1.onrender.com/)**
 Password-protected. Ask the handoff owner for access; the password is never stored in this repo.
