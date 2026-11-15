@@ -3,10 +3,11 @@
 **Our goal: Found distressed senior housing before brokers through the signals we find from public data.**
 
 🔗 **Live site: [bloomfield-project-1.onrender.com](https://bloomfield-project-1.onrender.com/)**
-Password-protected. Ask the handoff owner for access; the password is never stored in this repo.
 
-Ross Business+Tech AI Sprint · the Weiser Center for Real Estate · Bloomfield Capital · Team 1 
-Aiden Lee · Qifeng Yuan · Rui Li · Di Wu
+Notes: Password-protected. Ask the handoff owner for access; the password is never stored in this repo.
+
+**Powered by:** Ross Business+Tech AI Sprint · the Weiser Center for Real Estate · Bloomfield Capital
+**Team members:** Aiden Lee · Qifeng Yuan · Rui Li · Di Wu
 
 **Last updated:** Nov 15, 2026
 
